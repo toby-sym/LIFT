@@ -21,6 +21,8 @@ export type RoutineExercise = {
   options: { exerciseId: string | null; name: string; kind: ExerciseKind }[]
   sets: number
   targetReps: number
+  section: 'work' | 'warmup' | 'cooldown'
+  targetTempo: string | null
 }
 
 export type Routine = {
@@ -39,6 +41,7 @@ export type WorkoutSet = {
   reps: number | null
   rpe: number | null
   rir: number | null
+  actualTempo: string | null
   completed: boolean
 }
 
@@ -48,6 +51,7 @@ export type WorkoutSetInput = {
   completed: boolean
   rpe: number | null
   rir: number | null
+  actualTempo: string | null
 }
 
 export type WorkoutSession = {
@@ -57,6 +61,9 @@ export type WorkoutSession = {
   startedAt: string
   completedAt: string | null
   notes: string
+  rating: number | null
+  ratingNote: string
+  durationSeconds: number
   metrics: { totalReps: number; tonnageKg: number; tonnageComplete: boolean }
   exercises: {
     id: string
@@ -64,6 +71,8 @@ export type WorkoutSession = {
     slotName: string
     exerciseId: string | null
     kind: ExerciseKind
+    section: 'work' | 'warmup' | 'cooldown'
+    targetTempo: string | null
     options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind }[]
     sets: WorkoutSet[]
   }[]
@@ -84,6 +93,8 @@ export type RoutineInput = {
     options: { name: string; exerciseId?: string | null }[]
     sets: number
     targetReps: number
+    section: 'work' | 'warmup' | 'cooldown'
+    targetTempo?: string | null
   }[]
 }
 
