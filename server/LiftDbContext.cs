@@ -26,6 +26,7 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.NormalizedName).HasMaxLength(100);
             entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.Property(x => x.OneRepMaxKg).HasPrecision(7, 2);
             entity.HasOne<IdentityUser>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<BodyweightEntry>(entity =>
@@ -72,6 +73,7 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Kind).HasMaxLength(20);
             entity.Property(x => x.Section).HasMaxLength(20);
             entity.Property(x => x.TargetTempo).HasMaxLength(20);
+            entity.Property(x => x.OneRepMaxKg).HasPrecision(7, 2);
             entity.HasIndex(x => new { x.SessionId, x.Order });
             entity.HasOne<RoutineExercise>().WithMany().HasForeignKey(x => x.RoutineSlotId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
@@ -82,6 +84,7 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
         {
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.Property(x => x.OneRepMaxKg).HasPrecision(7, 2);
             entity.HasIndex(x => new { x.WorkoutExerciseId, x.Order }).IsUnique();
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
         });
@@ -104,6 +107,7 @@ public sealed class ExerciseDefinition
     public required string Name { get; set; }
     public required string NormalizedName { get; set; }
     public string Kind { get; set; } = "strength";
+    public decimal? OneRepMaxKg { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -174,6 +178,7 @@ public sealed class WorkoutExercise
     public string? SlotName { get; set; }
     public required string Name { get; set; }
     public string Kind { get; set; } = "strength";
+    public decimal? OneRepMaxKg { get; set; }
     public string Section { get; set; } = "work";
     public string? TargetTempo { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
@@ -189,6 +194,7 @@ public sealed class WorkoutExerciseOption
     public int Order { get; set; }
     public required string Name { get; set; }
     public string Kind { get; set; } = "strength";
+    public decimal? OneRepMaxKg { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
 }
 

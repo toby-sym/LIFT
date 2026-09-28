@@ -139,8 +139,8 @@ public sealed class WorkoutFlowTests
         using var alice = factory.CreateClient();
         await RegisterAndSignIn(alice, "alternatives@example.com");
 
-        var cableResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Cable incline press", kind = "strength" });
-        var machineResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Machine incline press", kind = "strength" });
+        var cableResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Cable incline press", kind = "strength", oneRepMaxKg = 100m });
+        var machineResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Machine incline press", kind = "strength", oneRepMaxKg = 120m });
         Assert.Equal(HttpStatusCode.Created, cableResponse.StatusCode);
         Assert.Equal(HttpStatusCode.Created, machineResponse.StatusCode);
         var cable = await cableResponse.Content.ReadFromJsonAsync<JsonElement>();
@@ -189,8 +189,9 @@ public sealed class WorkoutFlowTests
             exerciseId = cableId, clearLoggedSets = false
         });
         Assert.Equal(HttpStatusCode.OK, chooseCable.StatusCode);
-        Assert.Equal(cableId, (await chooseCable.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("exercises")[0].GetProperty("exerciseId").GetString());
+        var cableSession = await chooseCable.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(cableId, cableSession.GetProperty("exercises")[0].GetProperty("exerciseId").GetString());
+        Assert.Equal(100m, cableSession.GetProperty("exercises")[0].GetProperty("oneRepMaxKg").GetDecimal());
         Assert.Equal(HttpStatusCode.OK, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
         {
             weightKg = 25, reps = 8, completed = true, rpe = 8, rir = 2
@@ -214,6 +215,7 @@ public sealed class WorkoutFlowTests
         Assert.Equal(HttpStatusCode.OK, switchAndClear.StatusCode);
         var clearedSession = await switchAndClear.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(machineId, clearedSession.GetProperty("exercises")[0].GetProperty("exerciseId").GetString());
+        Assert.Equal(120m, clearedSession.GetProperty("exercises")[0].GetProperty("oneRepMaxKg").GetDecimal());
         Assert.False(clearedSession.GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("completed").GetBoolean());
 
         var updateRoutine = await alice.PutAsJsonAsync($"/api/routines/{routineId}", new
@@ -253,7 +255,7 @@ public sealed class WorkoutFlowTests
         using var client = factory.CreateClient();
         await RegisterAndSignIn(client, "bodyweight-sets@example.com");
 
-        var exerciseResponse = await client.PostAsJsonAsync("/api/exercises", new { name = "Pull-up", kind = "bodyweight" });
+        var exerciseResponse = await client.PostAsJsonAsync("/api/exercises", new { name = "Pull-up", kind = "bodyweight", oneRepMaxKg = 100m });
         Assert.Equal(HttpStatusCode.Created, exerciseResponse.StatusCode);
         var exercise = await exerciseResponse.Content.ReadFromJsonAsync<JsonElement>();
         var exerciseId = exercise.GetProperty("id").GetString();
@@ -292,6 +294,8 @@ public sealed class WorkoutFlowTests
         var firstSetSession = await firstSetResponse.Content.ReadFromJsonAsync<JsonElement>();
         var firstSet = firstSetSession.GetProperty("exercises")[0].GetProperty("sets")[0];
         Assert.Equal(78.4m, firstSet.GetProperty("bodyMassKg").GetDecimal());
+        Assert.Equal(78.4m, firstSet.GetProperty("percentageOfOneRm").GetDecimal());
+        Assert.Equal(112.8m, firstSet.GetProperty("estimatedOneRmKg").GetDecimal());
         Assert.Equal(8m, firstSet.GetProperty("rpe").GetDecimal());
         Assert.Equal(2m, firstSet.GetProperty("rir").GetDecimal());
         Assert.Equal(784m, firstSetSession.GetProperty("metrics").GetProperty("tonnageKg").GetDecimal());
@@ -368,6 +372,65 @@ public sealed class WorkoutFlowTests
         Assert.Equal("Strong session", history[0].GetProperty("ratingNote").GetString());
         Assert.True(history[0].GetProperty("durationSeconds").GetInt64() >= 0);
         Assert.Equal("2-1-2", history[0].GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("actualTempo").GetString());
+    }
+
+    [Fact]
+    public async Task Strength_sets_show_entered_max_percent_and_rpe_chart_estimate()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var client = factory.CreateClient();
+        await RegisterAndSignIn(client, "one-rep-max@example.com");
+
+        var invalidExercise = await client.PostAsJsonAsync("/api/exercises", new
+        {
+            name = "Invalid max", kind = "strength", oneRepMaxKg = 0
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidExercise.StatusCode);
+
+        var exerciseResponse = await client.PostAsJsonAsync("/api/exercises", new
+        {
+            name = "Bench press", kind = "strength", oneRepMaxKg = 100m
+        });
+        Assert.Equal(HttpStatusCode.Created, exerciseResponse.StatusCode);
+        var exercise = await exerciseResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var exerciseId = exercise.GetProperty("id").GetString();
+
+        var routineResponse = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Bench day",
+            exercises = new[]
+            {
+                new { name = "Bench press", exerciseId, sets = 1, targetReps = 5 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, routineResponse.StatusCode);
+        var routine = await routineResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionResponse = await client.PostAsJsonAsync("/api/sessions", new { routineId = routine.GetProperty("id").GetString() });
+        Assert.Equal(HttpStatusCode.Created, sessionResponse.StatusCode);
+        var session = await sessionResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetString();
+        var workoutExercise = session.GetProperty("exercises")[0];
+        Assert.Equal(100m, workoutExercise.GetProperty("oneRepMaxKg").GetDecimal());
+
+        var update = await client.PutAsJsonAsync($"/api/exercises/{exerciseId}", new
+        {
+            name = "Bench press", kind = "strength", oneRepMaxKg = 120m
+        });
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+
+        var setId = workoutExercise.GetProperty("sets")[0].GetProperty("id").GetString();
+        var log = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = 80m, reps = 5, completed = true, rpe = 8, rir = 2
+        });
+        Assert.Equal(HttpStatusCode.OK, log.StatusCode);
+        var logged = await log.Content.ReadFromJsonAsync<JsonElement>();
+        var selected = logged.GetProperty("exercises")[0];
+        var set = selected.GetProperty("sets")[0];
+        Assert.Equal(100m, selected.GetProperty("oneRepMaxKg").GetDecimal());
+        Assert.Equal(80m, set.GetProperty("percentageOfOneRm").GetDecimal());
+        Assert.Equal(98.6m, set.GetProperty("estimatedOneRmKg").GetDecimal());
     }
 
     private static async Task RegisterAndSignIn(HttpClient client, string email)

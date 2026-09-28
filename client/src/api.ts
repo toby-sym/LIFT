@@ -4,6 +4,7 @@ export type ExerciseDefinition = {
   id: string
   name: string
   kind: ExerciseKind
+  oneRepMaxKg: number | null
   createdAt: string
 }
 
@@ -42,6 +43,8 @@ export type WorkoutSet = {
   rpe: number | null
   rir: number | null
   actualTempo: string | null
+  estimatedOneRmKg: number | null
+  percentageOfOneRm: number | null
   completed: boolean
 }
 
@@ -71,9 +74,10 @@ export type WorkoutSession = {
     slotName: string
     exerciseId: string | null
     kind: ExerciseKind
+    oneRepMaxKg: number | null
     section: 'work' | 'warmup' | 'cooldown'
     targetTempo: string | null
-    options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind }[]
+    options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind; oneRepMaxKg: number | null }[]
     sets: WorkoutSet[]
   }[]
 }
