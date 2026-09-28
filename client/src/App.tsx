@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, json, request, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
+import { ApiError, json, request, type BodyweightEntry, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
 
 type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 type Account = { email: string }
@@ -7,6 +7,11 @@ type Account = { email: string }
 const dateLabel = (value: string) => new Intl.DateTimeFormat(undefined, {
   day: 'numeric', month: 'short', year: 'numeric',
 }).format(new Date(value))
+
+const localDateInput = () => {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
 
 function App() {
   const [account, setAccount] = useState<Account | null>(null)
@@ -18,24 +23,27 @@ function App() {
   const [history, setHistory] = useState<WorkoutSession[]>([])
   const [stats, setStats] = useState<Stats>({ workouts: 0, weeklySets: 0, bests: [] })
   const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseDefinition[]>([])
+  const [bodyweightEntries, setBodyweightEntries] = useState<BodyweightEntry[]>([])
   const [editing, setEditing] = useState<Routine | 'new' | null>(null)
   const [editingExercise, setEditingExercise] = useState<ExerciseDefinition | 'new' | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function loadData() {
-    const [nextRoutines, nextActive, nextHistory, nextStats, nextExercises] = await Promise.all([
+    const [nextRoutines, nextActive, nextHistory, nextStats, nextExercises, nextBodyweight] = await Promise.all([
       request<Routine[]>('/api/routines'),
       request<WorkoutSession | null>('/api/sessions/active'),
       request<WorkoutSession[]>('/api/sessions/history'),
       request<Stats>('/api/stats'),
       request<ExerciseDefinition[]>('/api/exercises'),
+      request<BodyweightEntry[]>('/api/bodyweight'),
     ])
     setRoutines(nextRoutines)
     setActive(nextActive)
     setHistory(nextHistory)
     setStats(nextStats)
     setExerciseLibrary(nextExercises)
+    setBodyweightEntries(nextBodyweight)
   }
 
   useEffect(() => {
@@ -70,6 +78,7 @@ function App() {
       setRoutines([])
       setHistory([])
       setExerciseLibrary([])
+      setBodyweightEntries([])
     })
   }
 
@@ -100,6 +109,21 @@ function App() {
     if (!window.confirm(`Remove “${exercise.name}” from your exercise library? Routine and history names will be kept.`)) return
     await run(async () => {
       await request<null>(`/api/exercises/${exercise.id}`, { method: 'DELETE' })
+      await loadData()
+    })
+  }
+
+  async function saveBodyweight(id: string | null, value: { weightKg: number; measuredOn: string }) {
+    await request<BodyweightEntry>(id ? `/api/bodyweight/${id}` : '/api/bodyweight', {
+      method: id ? 'PUT' : 'POST', body: json(value),
+    })
+    await loadData()
+  }
+
+  async function deleteBodyweight(entry: BodyweightEntry) {
+    if (!window.confirm(`Delete the ${entry.weightKg} kg entry from ${entry.measuredOn}?`)) return
+    await run(async () => {
+      await request<null>(`/api/bodyweight/${entry.id}`, { method: 'DELETE' })
       await loadData()
     })
   }
@@ -218,7 +242,7 @@ function App() {
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
         {page === 'exercises' && <ExercisesPage exercises={exerciseLibrary} onNew={() => setEditingExercise('new')}
           onEdit={setEditingExercise} onDelete={deleteExercise} />}
-        {page === 'progress' && <ProgressPage stats={stats} />}
+        {page === 'progress' && <ProgressPage stats={stats} entries={bodyweightEntries} onSave={saveBodyweight} onDelete={deleteBodyweight} />}
         {page === 'history' && <HistoryPage history={history} />}
         </main>
       </div>
@@ -392,14 +416,94 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   </div>)}</div>
 }
 
-function ProgressPage({ stats }: { stats: Stats }) {
-  return <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.7fr)]">
+function ProgressPage({ stats, entries, onSave, onDelete }: {
+  stats: Stats; entries: BodyweightEntry[]
+  onSave: (id: string | null, value: { weightKg: number; measuredOn: string }) => Promise<void>
+  onDelete: (entry: BodyweightEntry) => void
+}) {
+  const [editing, setEditing] = useState<BodyweightEntry | null>(null)
+  const [weight, setWeight] = useState('')
+  const [measuredOn, setMeasuredOn] = useState(localDateInput())
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const ascending = [...entries].sort((a, b) => a.measuredOn.localeCompare(b.measuredOn) || a.createdAt.localeCompare(b.createdAt))
+  const values = ascending.map(entry => entry.weightKg)
+  const min = values.length ? Math.min(...values) : 0
+  const max = values.length ? Math.max(...values) : 0
+  const padding = Math.max((max - min) * 0.15, 1)
+  const low = min - padding
+  const high = max + padding
+  const points = ascending.map((entry, index) => ({
+    entry,
+    x: ascending.length === 1 ? 400 : 32 + index / (ascending.length - 1) * 736,
+    y: 180 - (entry.weightKg - low) / (high - low) * 145,
+  }))
+  const path = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setFormError('')
+    try {
+      await onSave(editing?.id ?? null, { weightKg: Number(weight), measuredOn })
+      setEditing(null)
+      setWeight('')
+      setMeasuredOn(localDateInput())
+    } catch (cause) {
+      setFormError(cause instanceof Error ? cause.message : 'Could not save this measurement.')
+    } finally { setSaving(false) }
+  }
+
+  function startEdit(entry: BodyweightEntry) {
+    setEditing(entry)
+    setWeight(String(entry.weightKg))
+    setMeasuredOn(entry.measuredOn)
+    setFormError('')
+  }
+
+  function cancelEdit() {
+    setEditing(null)
+    setWeight('')
+    setMeasuredOn(localDateInput())
+    setFormError('')
+  }
+
+  return <div className="space-y-5">
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="card metric-card"><p className="eyebrow">Completed workouts</p><p className="metric-value">{stats.workouts}</p><p className="metric-caption">All time</p></div>
       <div className="card metric-card"><p className="eyebrow">Work sets</p><p className="metric-value">{stats.weeklySets}</p><p className="metric-caption">This week</p></div>
-      <div className="card sm:col-span-2 p-6"><p className="eyebrow">A note on progress</p><h2 className="mt-3 text-xl font-black">Small steps add up.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-muted">Keep logging your training. Exercise trends and personal records will build from the work you record here.</p></div>
     </div>
-    <div className="card p-6"><p className="eyebrow">Heaviest recorded sets</p>{stats.bests.length ? <div className="mt-4 divide-y divide-line">{stats.bests.map(best => <div className="flex justify-between gap-3 py-3 text-sm" key={best.exercise}><span className="font-semibold">{best.exercise}</span><span className="whitespace-nowrap font-black">{best.weightKg} kg</span></div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your best lifts will appear as you log completed sets.</p>}</div>
+    <section className="card p-5 md:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Bodyweight</p><h2 className="mt-2 text-2xl font-black">Your trend over time</h2><p className="mt-2 text-sm text-muted">{entries.length ? `${entries.length} saved ${entries.length === 1 ? 'measurement' : 'measurements'}` : 'Add an occasional reading to start your trend.'}</p></div>{entries.length > 0 && <div className="rounded-xl bg-paper px-4 py-3"><p className="text-xs font-semibold text-muted">Latest</p><p className="mt-1 text-2xl font-black">{entries[0].weightKg} <span className="text-sm">kg</span></p></div>}</div>
+      {points.length ? <div className="mt-6 overflow-hidden rounded-xl bg-[#f7f9f5] p-2 sm:p-4">
+        <svg viewBox="0 0 800 220" className="h-52 w-full" role="img" aria-label={`Bodyweight trend with ${ascending.length} measurements`}>
+          {[35, 107, 180].map(y => <line key={y} x1="24" x2="776" y1={y} y2={y} stroke="#e1e7dc" strokeDasharray="4 6" />)}
+          {points.length > 1 && <path d={path} fill="none" stroke="#8fbd42" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
+          {points.map(point => <circle key={point.entry.id} cx={point.x} cy={point.y} r="5" fill="#172328" stroke="white" strokeWidth="2"><title>{`${point.entry.weightKg} kg on ${point.entry.measuredOn}`}</title></circle>)}
+        </svg>
+        <div className="flex justify-between px-2 text-xs text-muted"><span>{dateLabel(`${ascending[0].measuredOn}T12:00:00`)}</span><span>{dateLabel(`${ascending[ascending.length - 1].measuredOn}T12:00:00`)}</span></div>
+      </div> : <div className="mt-5 rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted">Your trend line will appear after you save a measurement.</div>}
+    </section>
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,.8fr)]">
+      <section className="card p-5 md:p-6">
+        <p className="eyebrow">{editing ? 'Update measurement' : 'Log a measurement'}</p>
+        <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+          <label className="text-xs font-semibold text-muted">Weight (kg)<input className="field mt-1" type="number" min="1" max="500" step="0.1" inputMode="decimal" value={weight} onChange={event => setWeight(event.target.value)} required placeholder="e.g. 78.4" /></label>
+          <label className="text-xs font-semibold text-muted">Date<input className="field mt-1" type="date" max={localDateInput()} value={measuredOn} onChange={event => setMeasuredOn(event.target.value)} required /></label>
+          <button className="button-primary" disabled={saving}>{saving ? 'Saving…' : editing ? 'Update entry' : 'Save entry'}</button>
+        </form>
+        {formError && <p role="alert" className="mt-3 text-sm text-red-700">{formError}</p>}
+        {editing && <button className="button-quiet mt-3" onClick={cancelEdit}>Cancel edit</button>}
+      </section>
+      <section className="card p-5 md:p-6">
+        <div className="flex items-center justify-between gap-3"><div><p className="eyebrow">Measurements</p><h2 className="mt-2 text-lg font-black">Recent entries</h2></div><span className="text-xs text-muted">kg</span></div>
+        {entries.length ? <div className="mt-3 max-h-80 divide-y divide-line overflow-y-auto">{[...entries].sort((a, b) => b.measuredOn.localeCompare(a.measuredOn) || b.createdAt.localeCompare(a.createdAt)).map(entry => <div className="flex items-center justify-between gap-3 py-3" key={entry.id}>
+          <div><p className="font-bold">{entry.weightKg} kg</p><p className="mt-1 text-xs text-muted">{dateLabel(`${entry.measuredOn}T12:00:00`)}</p></div>
+          <div className="flex gap-2"><button className="button-quiet !px-3 !py-2" onClick={() => startEdit(entry)}>Edit</button><button className="text-sm font-semibold text-muted hover:text-red-700" onClick={() => onDelete(entry)}>Delete</button></div>
+        </div>)}</div> : <p className="mt-4 text-sm text-muted">No measurements saved yet.</p>}
+      </section>
+    </div>
+    <div className="card p-5 md:p-6"><p className="eyebrow">Heaviest recorded sets</p>{stats.bests.length ? <div className="mt-4 divide-y divide-line">{stats.bests.map(best => <div className="flex justify-between gap-3 py-3 text-sm" key={best.exerciseId ?? best.exercise}><span className="font-semibold">{best.exercise}</span><span className="whitespace-nowrap font-black">{best.weightKg} kg</span></div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your best lifts will appear as you log completed sets.</p>}</div>
   </div>
 }
 

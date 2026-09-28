@@ -7,6 +7,7 @@ namespace Lift.Api;
 public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : IdentityDbContext<IdentityUser>(options)
 {
     public DbSet<ExerciseDefinition> ExerciseLibrary => Set<ExerciseDefinition>();
+    public DbSet<BodyweightEntry> BodyweightEntries => Set<BodyweightEntry>();
     public DbSet<Routine> Routines => Set<Routine>();
     public DbSet<RoutineExercise> RoutineExercises => Set<RoutineExercise>();
     public DbSet<RoutineExerciseOption> RoutineExerciseOptions => Set<RoutineExerciseOption>();
@@ -25,6 +26,12 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.NormalizedName).HasMaxLength(100);
             entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.HasOne<IdentityUser>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<BodyweightEntry>(entity =>
+        {
+            entity.HasIndex(x => new { x.OwnerId, x.MeasuredOn });
+            entity.Property(x => x.WeightKg).HasPrecision(7, 2);
             entity.HasOne<IdentityUser>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
         modelBuilder.Entity<Routine>(entity =>
@@ -87,6 +94,15 @@ public sealed class ExerciseDefinition
     public required string Name { get; set; }
     public required string NormalizedName { get; set; }
     public string Kind { get; set; } = "strength";
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class BodyweightEntry
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public required string OwnerId { get; set; }
+    public decimal WeightKg { get; set; }
+    public DateOnly MeasuredOn { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

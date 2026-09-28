@@ -59,6 +59,25 @@ public sealed class WorkoutFlowTests
         Assert.Equal(HttpStatusCode.OK, renameExercise.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/exercises/{bodyweight.GetProperty("id").GetString()}")).StatusCode);
 
+        Assert.Equal(HttpStatusCode.BadRequest, (await alice.PostAsJsonAsync("/api/bodyweight", new
+        {
+            weightKg = 501, measuredOn = DateOnly.FromDateTime(DateTime.UtcNow)
+        })).StatusCode);
+        var bodyweightEntryResponse = await alice.PostAsJsonAsync("/api/bodyweight", new
+        {
+            weightKg = 78.4m, measuredOn = DateOnly.FromDateTime(DateTime.UtcNow)
+        });
+        Assert.Equal(HttpStatusCode.Created, bodyweightEntryResponse.StatusCode);
+        var bodyweightEntry = await bodyweightEntryResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var bodyweightEntryId = bodyweightEntry.GetProperty("id").GetString();
+        Assert.Equal(78.4m, bodyweightEntry.GetProperty("weightKg").GetDecimal());
+        var bodyweightUpdate = await alice.PutAsJsonAsync($"/api/bodyweight/{bodyweightEntryId}", new
+        {
+            weightKg = 77.9m, measuredOn = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-1))
+        });
+        Assert.Equal(HttpStatusCode.OK, bodyweightUpdate.StatusCode);
+        Assert.Equal(77.9m, (await bodyweightUpdate.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("weightKg").GetDecimal());
+
         var start = await alice.PostAsJsonAsync("/api/sessions", new { routineId });
         Assert.Equal(HttpStatusCode.Created, start.StatusCode);
         var session = await start.Content.ReadFromJsonAsync<JsonElement>();
@@ -94,6 +113,8 @@ public sealed class WorkoutFlowTests
         await RegisterAndSignIn(bob, "bob@example.com");
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/routines")).EnumerateArray());
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/exercises")).EnumerateArray());
+        Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/bodyweight")).EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.DeleteAsync($"/api/bodyweight/{bodyweightEntryId}")).StatusCode);
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/sessions/history")).EnumerateArray());
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsJsonAsync("/api/sessions", new { routineId })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/routines/{routineId}", new
@@ -105,6 +126,7 @@ public sealed class WorkoutFlowTests
             weightKg = 100, reps = 10, completed = true
         })).StatusCode);
 
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/bodyweight/{bodyweightEntryId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await alice.GetAsync("/api/routines")).StatusCode);
     }
