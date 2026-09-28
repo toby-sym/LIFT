@@ -433,6 +433,85 @@ public sealed class WorkoutFlowTests
         Assert.Equal(98.6m, set.GetProperty("estimatedOneRmKg").GetDecimal());
     }
 
+    [Fact]
+    public async Task Cardio_targets_are_prescribed_and_results_are_entered_manually()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var client = factory.CreateClient();
+        await RegisterAndSignIn(client, "cardio@example.com");
+
+        var exerciseResponse = await client.PostAsJsonAsync("/api/exercises", new { name = "Stationary bike", kind = "cardio" });
+        Assert.Equal(HttpStatusCode.Created, exerciseResponse.StatusCode);
+        var exercise = await exerciseResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var exerciseId = exercise.GetProperty("id").GetString();
+
+        var invalidRange = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Bad cardio",
+            exercises = new[]
+            {
+                new { name = "Bike", exerciseId, sets = 1, targetReps = 1, targetHeartRateMin = 160, targetHeartRateMax = 150 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidRange.StatusCode);
+
+        var routineResponse = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Bike intervals",
+            exercises = new[]
+            {
+                new
+                {
+                    name = "Bike", exerciseId, sets = 1, targetReps = 1, targetHeartRateMin = 120, targetHeartRateMax = 150,
+                    targetResistanceLevel = 6.5m, targetRpm = 80m, targetDurationSeconds = 600
+                }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, routineResponse.StatusCode);
+        var routine = await routineResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var savedSlot = routine.GetProperty("exercises")[0];
+        Assert.Equal(120, savedSlot.GetProperty("targetHeartRateMin").GetInt32());
+        Assert.Equal(150, savedSlot.GetProperty("targetHeartRateMax").GetInt32());
+        Assert.Equal(6.5m, savedSlot.GetProperty("targetResistanceLevel").GetDecimal());
+        Assert.Equal(80m, savedSlot.GetProperty("targetRpm").GetDecimal());
+
+        var sessionResponse = await client.PostAsJsonAsync("/api/sessions", new { routineId = routine.GetProperty("id").GetString() });
+        Assert.Equal(HttpStatusCode.Created, sessionResponse.StatusCode);
+        var session = await sessionResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetString();
+        var sessionExercise = session.GetProperty("exercises")[0];
+        Assert.Equal("cardio", sessionExercise.GetProperty("kind").GetString());
+        Assert.Equal(120, sessionExercise.GetProperty("targetHeartRateMin").GetInt32());
+        var setId = sessionExercise.GetProperty("sets")[0].GetProperty("id").GetString();
+        Assert.Equal(600, sessionExercise.GetProperty("sets")[0].GetProperty("targetDurationSeconds").GetInt32());
+
+        var missingDuration = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = (decimal?)null, reps = (int?)null, completed = true
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, missingDuration.StatusCode);
+        var invalidHeartRate = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = (decimal?)null, reps = (int?)null, completed = true, durationSeconds = 600, heartRateBpm = 241
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidHeartRate.StatusCode);
+
+        var log = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = (decimal?)null, reps = (int?)null, completed = true, durationSeconds = 600,
+            heartRateBpm = 145, resistanceLevel = 6.5m, rpm = 82m
+        });
+        Assert.Equal(HttpStatusCode.OK, log.StatusCode);
+        var saved = await log.Content.ReadFromJsonAsync<JsonElement>();
+        var loggedSet = saved.GetProperty("exercises")[0].GetProperty("sets")[0];
+        Assert.Equal(600, loggedSet.GetProperty("durationSeconds").GetInt32());
+        Assert.Equal(145, loggedSet.GetProperty("heartRateBpm").GetInt32());
+        Assert.Equal(6.5m, loggedSet.GetProperty("resistanceLevel").GetDecimal());
+        Assert.Equal(82m, loggedSet.GetProperty("rpm").GetDecimal());
+        Assert.Equal(JsonValueKind.Null, saved.GetProperty("metrics").GetProperty("tonnageKg").ValueKind);
+    }
+
     private static async Task RegisterAndSignIn(HttpClient client, string email)
     {
         var password = "StrongPass1!";

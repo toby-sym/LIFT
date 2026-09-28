@@ -24,6 +24,11 @@ export type RoutineExercise = {
   targetReps: number
   section: 'work' | 'warmup' | 'cooldown'
   targetTempo: string | null
+  targetHeartRateMin: number | null
+  targetHeartRateMax: number | null
+  targetResistanceLevel: number | null
+  targetRpm: number | null
+  targetDurationSeconds: number | null
 }
 
 export type Routine = {
@@ -45,6 +50,11 @@ export type WorkoutSet = {
   actualTempo: string | null
   estimatedOneRmKg: number | null
   percentageOfOneRm: number | null
+  targetDurationSeconds: number | null
+  durationSeconds: number | null
+  heartRateBpm: number | null
+  resistanceLevel: number | null
+  rpm: number | null
   completed: boolean
 }
 
@@ -55,6 +65,10 @@ export type WorkoutSetInput = {
   rpe: number | null
   rir: number | null
   actualTempo: string | null
+  durationSeconds: number | null
+  heartRateBpm: number | null
+  resistanceLevel: number | null
+  rpm: number | null
 }
 
 export type WorkoutSession = {
@@ -67,7 +81,7 @@ export type WorkoutSession = {
   rating: number | null
   ratingNote: string
   durationSeconds: number
-  metrics: { totalReps: number; tonnageKg: number; tonnageComplete: boolean }
+  metrics: { totalReps: number; tonnageKg: number | null; tonnageComplete: boolean }
   exercises: {
     id: string
     name: string
@@ -77,6 +91,10 @@ export type WorkoutSession = {
     oneRepMaxKg: number | null
     section: 'work' | 'warmup' | 'cooldown'
     targetTempo: string | null
+    targetHeartRateMin: number | null
+    targetHeartRateMax: number | null
+    targetResistanceLevel: number | null
+    targetRpm: number | null
     options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind; oneRepMaxKg: number | null }[]
     sets: WorkoutSet[]
   }[]
@@ -99,6 +117,11 @@ export type RoutineInput = {
     targetReps: number
     section: 'work' | 'warmup' | 'cooldown'
     targetTempo?: string | null
+    targetHeartRateMin?: number | null
+    targetHeartRateMax?: number | null
+    targetResistanceLevel?: number | null
+    targetRpm?: number | null
+    targetDurationSeconds?: number | null
   }[]
 }
 
