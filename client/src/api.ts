@@ -11,6 +11,7 @@ export type RoutineExercise = {
   id: string
   name: string
   exerciseId: string | null
+  options: { exerciseId: string | null; name: string; kind: ExerciseKind }[]
   sets: number
   targetReps: number
 }
@@ -38,7 +39,14 @@ export type WorkoutSession = {
   startedAt: string
   completedAt: string | null
   notes: string
-  exercises: { id: string; name: string; exerciseId: string | null; sets: WorkoutSet[] }[]
+  exercises: {
+    id: string
+    name: string
+    slotName: string
+    exerciseId: string | null
+    options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind }[]
+    sets: WorkoutSet[]
+  }[]
 }
 
 export type Stats = {
@@ -49,7 +57,14 @@ export type Stats = {
 
 export type RoutineInput = {
   name: string
-  exercises: { name: string; exerciseId?: string | null; sets: number; targetReps: number }[]
+  exercises: {
+    id?: string | null
+    name: string
+    exerciseId?: string | null
+    options: { name: string; exerciseId?: string | null }[]
+    sets: number
+    targetReps: number
+  }[]
 }
 
 export class ApiError extends Error {

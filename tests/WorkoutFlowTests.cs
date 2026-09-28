@@ -109,6 +109,114 @@ public sealed class WorkoutFlowTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await alice.GetAsync("/api/routines")).StatusCode);
     }
 
+    [Fact]
+    public async Task A_routine_can_offer_alternatives_and_a_session_saves_the_selected_exercise()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var alice = factory.CreateClient();
+        await RegisterAndSignIn(alice, "alternatives@example.com");
+
+        var cableResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Cable incline press", kind = "strength" });
+        var machineResponse = await alice.PostAsJsonAsync("/api/exercises", new { name = "Machine incline press", kind = "strength" });
+        Assert.Equal(HttpStatusCode.Created, cableResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, machineResponse.StatusCode);
+        var cable = await cableResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var machine = await machineResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var cableId = cable.GetProperty("id").GetString();
+        var machineId = machine.GetProperty("id").GetString();
+
+        var createRoutine = await alice.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Upper A",
+            exercises = new[]
+            {
+                new
+                {
+                    name = "Incline chest press", sets = 2, targetReps = 8,
+                    options = new[]
+                    {
+                        new { name = "Cable incline press", exerciseId = cableId },
+                        new { name = "Machine incline press", exerciseId = machineId }
+                    }
+                }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, createRoutine.StatusCode);
+        var routine = await createRoutine.Content.ReadFromJsonAsync<JsonElement>();
+        var routineId = routine.GetProperty("id").GetString();
+        var slotId = routine.GetProperty("exercises")[0].GetProperty("id").GetString();
+        Assert.Equal(2, routine.GetProperty("exercises")[0].GetProperty("options").GetArrayLength());
+
+        var start = await alice.PostAsJsonAsync("/api/sessions", new { routineId });
+        Assert.Equal(HttpStatusCode.Created, start.StatusCode);
+        var session = await start.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetString();
+        var sessionExercise = session.GetProperty("exercises")[0];
+        var workoutExerciseId = sessionExercise.GetProperty("id").GetString();
+        Assert.Null(sessionExercise.GetProperty("exerciseId").GetString());
+        Assert.Equal(2, sessionExercise.GetProperty("options").GetArrayLength());
+        var setId = sessionExercise.GetProperty("sets")[0].GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.Conflict, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = 25, reps = 8, completed = true
+        })).StatusCode);
+
+        var chooseCable = await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/exercises/{workoutExerciseId}/choice", new
+        {
+            exerciseId = cableId, clearLoggedSets = false
+        });
+        Assert.Equal(HttpStatusCode.OK, chooseCable.StatusCode);
+        Assert.Equal(cableId, (await chooseCable.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("exercises")[0].GetProperty("exerciseId").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = 25, reps = 8, completed = true
+        })).StatusCode);
+
+        var blockedSwitch = await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/exercises/{workoutExerciseId}/choice", new
+        {
+            exerciseId = machineId, clearLoggedSets = false
+        });
+        Assert.Equal(HttpStatusCode.Conflict, blockedSwitch.StatusCode);
+        var switchAndClear = await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/exercises/{workoutExerciseId}/choice", new
+        {
+            exerciseId = machineId, clearLoggedSets = true
+        });
+        Assert.Equal(HttpStatusCode.OK, switchAndClear.StatusCode);
+        var clearedSession = await switchAndClear.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(machineId, clearedSession.GetProperty("exercises")[0].GetProperty("exerciseId").GetString());
+        Assert.False(clearedSession.GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("completed").GetBoolean());
+
+        var updateRoutine = await alice.PutAsJsonAsync($"/api/routines/{routineId}", new
+        {
+            name = "Upper A revised",
+            exercises = new[]
+            {
+                new
+                {
+                    id = slotId, name = "Incline press", sets = 3, targetReps = 10,
+                    options = new[]
+                    {
+                        new { name = "Cable incline press", exerciseId = cableId },
+                        new { name = "Machine incline press", exerciseId = machineId }
+                    }
+                }
+            }
+        });
+        Assert.True(updateRoutine.StatusCode == HttpStatusCode.OK, await updateRoutine.Content.ReadAsStringAsync());
+        var updatedRoutine = await updateRoutine.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(slotId, updatedRoutine.GetProperty("exercises")[0].GetProperty("id").GetString());
+        Assert.Equal(3, updatedRoutine.GetProperty("exercises")[0].GetProperty("sets").GetInt32());
+
+        using var bob = factory.CreateClient();
+        await RegisterAndSignIn(bob, "other@example.com");
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/sessions/{sessionId}/exercises/{workoutExerciseId}/choice", new
+        {
+            exerciseId = cableId, clearLoggedSets = false
+        })).StatusCode);
+    }
+
     private static async Task RegisterAndSignIn(HttpClient client, string email)
     {
         var password = "StrongPass1!";

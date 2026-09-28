@@ -9,8 +9,10 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
     public DbSet<ExerciseDefinition> ExerciseLibrary => Set<ExerciseDefinition>();
     public DbSet<Routine> Routines => Set<Routine>();
     public DbSet<RoutineExercise> RoutineExercises => Set<RoutineExercise>();
+    public DbSet<RoutineExerciseOption> RoutineExerciseOptions => Set<RoutineExerciseOption>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WorkoutExercise> WorkoutExercises => Set<WorkoutExercise>();
+    public DbSet<WorkoutExerciseOption> WorkoutExerciseOptions => Set<WorkoutExerciseOption>();
     public DbSet<WorkoutSet> WorkoutSets => Set<WorkoutSet>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -36,7 +38,14 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
         {
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.HasIndex(x => new { x.RoutineId, x.Order });
-            entity.HasOne<ExerciseDefinition>().WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasMany(x => x.Options).WithOne().HasForeignKey(x => x.RoutineExerciseId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<RoutineExerciseOption>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.HasIndex(x => new { x.RoutineExerciseId, x.Order }).IsUnique();
+            entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<WorkoutSession>(entity =>
         {
@@ -49,9 +58,19 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
         modelBuilder.Entity<WorkoutExercise>(entity =>
         {
             entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.SlotName).HasMaxLength(100);
             entity.HasIndex(x => new { x.SessionId, x.Order });
-            entity.HasOne<ExerciseDefinition>().WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne<RoutineExercise>().WithMany().HasForeignKey(x => x.RoutineSlotId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasMany(x => x.Options).WithOne().HasForeignKey(x => x.WorkoutExerciseId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Sets).WithOne().HasForeignKey(x => x.ExerciseId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<WorkoutExerciseOption>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.HasIndex(x => new { x.WorkoutExerciseId, x.Order }).IsUnique();
+            entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
         });
         modelBuilder.Entity<WorkoutSet>(entity =>
         {
@@ -89,6 +108,18 @@ public sealed class RoutineExercise
     public required string Name { get; set; }
     public int Sets { get; set; }
     public int TargetReps { get; set; }
+    public ExerciseDefinition? ExerciseDefinition { get; set; }
+    public List<RoutineExerciseOption> Options { get; set; } = [];
+}
+
+public sealed class RoutineExerciseOption
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid RoutineExerciseId { get; set; }
+    public Guid? ExerciseDefinitionId { get; set; }
+    public int Order { get; set; }
+    public required string Name { get; set; }
+    public ExerciseDefinition? ExerciseDefinition { get; set; }
 }
 
 public sealed class WorkoutSession
@@ -107,10 +138,25 @@ public sealed class WorkoutExercise
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid SessionId { get; set; }
+    public Guid? RoutineSlotId { get; set; }
+    public Guid? ExerciseDefinitionId { get; set; }
+    public int Order { get; set; }
+    public string? SlotName { get; set; }
+    public required string Name { get; set; }
+    public ExerciseDefinition? ExerciseDefinition { get; set; }
+    public List<WorkoutExerciseOption> Options { get; set; } = [];
+    public List<WorkoutSet> Sets { get; set; } = [];
+}
+
+public sealed class WorkoutExerciseOption
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid WorkoutExerciseId { get; set; }
     public Guid? ExerciseDefinitionId { get; set; }
     public int Order { get; set; }
     public required string Name { get; set; }
-    public List<WorkoutSet> Sets { get; set; } = [];
+    public string Kind { get; set; } = "strength";
+    public ExerciseDefinition? ExerciseDefinition { get; set; }
 }
 
 public sealed class WorkoutSet
