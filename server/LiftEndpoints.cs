@@ -82,6 +82,52 @@ public static class LiftEndpoints
             return Results.NoContent();
         });
 
+        api.MapGet("/bodyweight", async (LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var entries = await db.BodyweightEntries.AsNoTracking()
+                .Where(x => x.OwnerId == Owner(user))
+                .OrderByDescending(x => x.MeasuredOn)
+                .ThenByDescending(x => x.CreatedAt)
+                .ToListAsync();
+            return Results.Ok(entries.Select(ToResponse));
+        });
+
+        api.MapPost("/bodyweight", async (BodyweightInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var errors = Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var entry = new BodyweightEntry
+            {
+                OwnerId = Owner(user),
+                WeightKg = input.WeightKg,
+                MeasuredOn = input.MeasuredOn
+            };
+            db.BodyweightEntries.Add(entry);
+            await db.SaveChangesAsync();
+            return Results.Created($"/api/bodyweight/{entry.Id}", ToResponse(entry));
+        });
+
+        api.MapPut("/bodyweight/{id:guid}", async (Guid id, BodyweightInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var errors = Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var entry = await db.BodyweightEntries.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
+            if (entry is null) return Results.NotFound();
+            entry.WeightKg = input.WeightKg;
+            entry.MeasuredOn = input.MeasuredOn;
+            await db.SaveChangesAsync();
+            return Results.Ok(ToResponse(entry));
+        });
+
+        api.MapDelete("/bodyweight/{id:guid}", async (Guid id, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var entry = await db.BodyweightEntries.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
+            if (entry is null) return Results.NotFound();
+            db.BodyweightEntries.Remove(entry);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
         api.MapGet("/routines", async (LiftDbContext db, ClaimsPrincipal user) =>
         {
             var routines = await db.Routines.AsNoTracking()
@@ -481,6 +527,14 @@ public static class LiftEndpoints
         return errors;
     }
 
+    private static Dictionary<string, string[]> Validate(BodyweightInput input)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (input.WeightKg is < 1 or > 500)
+            errors["weightKg"] = ["Bodyweight must be between 1 and 500 kg."];
+        return errors;
+    }
+
     private static Dictionary<string, string[]> Validate(SetInput input)
     {
         var errors = new Dictionary<string, string[]>();
@@ -542,11 +596,20 @@ public static class LiftEndpoints
         exercise.Kind,
         exercise.CreatedAt
     };
+
+    private static object ToResponse(BodyweightEntry entry) => new
+    {
+        entry.Id,
+        entry.WeightKg,
+        entry.MeasuredOn,
+        entry.CreatedAt
+    };
 }
 
 public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null);
 public sealed record ExerciseOptionInput(string Name, Guid? ExerciseId = null);
 public sealed record ExerciseLibraryInput(string Name, string Kind);
+public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);
 public sealed record ExerciseChoiceInput(Guid ExerciseId, bool ClearLoggedSets = false);

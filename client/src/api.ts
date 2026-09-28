@@ -7,6 +7,13 @@ export type ExerciseDefinition = {
   createdAt: string
 }
 
+export type BodyweightEntry = {
+  id: string
+  weightKg: number
+  measuredOn: string
+  createdAt: string
+}
+
 export type RoutineExercise = {
   id: string
   name: string
