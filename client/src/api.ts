@@ -35,8 +35,19 @@ export type WorkoutSet = {
   order: number
   targetReps: number
   weightKg: number | null
+  bodyMassKg: number | null
+  reps: number | null
+  rpe: number | null
+  rir: number | null
+  completed: boolean
+}
+
+export type WorkoutSetInput = {
+  weightKg: number | null
   reps: number | null
   completed: boolean
+  rpe: number | null
+  rir: number | null
 }
 
 export type WorkoutSession = {
@@ -46,11 +57,13 @@ export type WorkoutSession = {
   startedAt: string
   completedAt: string | null
   notes: string
+  metrics: { totalReps: number; tonnageKg: number; tonnageComplete: boolean }
   exercises: {
     id: string
     name: string
     slotName: string
     exerciseId: string | null
+    kind: ExerciseKind
     options: { id: string; exerciseId: string | null; name: string; kind: ExerciseKind }[]
     sets: WorkoutSet[]
   }[]
