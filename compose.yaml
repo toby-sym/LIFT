@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: lift
+      POSTGRES_USER: lift
+      POSTGRES_PASSWORD: lift_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - lift-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lift -d lift"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  lift-postgres:

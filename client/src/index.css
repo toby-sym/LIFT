@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #172328;
+  --color-muted: #667479;
+  --color-paper: #f5f7f3;
+  --color-line: #dce3dc;
+  --color-accent: #b7eb55;
+  --font-sans: "Inter", "Segoe UI", Arial, sans-serif;
+}
+
+:root {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body { margin: 0; min-width: 320px; }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+
+.field {
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-ink outline-none transition focus:border-ink focus:ring-2 focus:ring-accent/50;
+}
+.button-primary {
+  @apply inline-flex items-center justify-center rounded-xl bg-ink px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#304147] disabled:hover:bg-ink;
+}
+.button-accent {
+  @apply inline-flex items-center justify-center rounded-xl bg-accent px-5 py-2.5 text-sm font-bold text-ink transition hover:bg-[#a4db3c];
+}
+.button-quiet {
+  @apply inline-flex items-center justify-center rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-semibold text-ink transition hover:border-ink/40;
+}
+.card { @apply rounded-2xl border border-line bg-white shadow-[0_4px_24px_rgba(23,35,40,.035)]; }
+.eyebrow { @apply text-xs font-bold uppercase tracking-[.16em] text-muted; }
