@@ -148,6 +148,7 @@ public static class LiftEndpoints
         {
             var errors = Validate(input);
             foreach (var error in ValidateExerciseOptions(input)) errors[error.Key] = error.Value;
+            foreach (var error in ValidateCardioTargets(input)) errors[error.Key] = error.Value;
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
@@ -168,6 +169,7 @@ public static class LiftEndpoints
         {
             var errors = Validate(input);
             foreach (var error in ValidateExerciseOptions(input)) errors[error.Key] = error.Value;
+            foreach (var error in ValidateCardioTargets(input)) errors[error.Key] = error.Value;
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
@@ -251,6 +253,10 @@ public static class LiftEndpoints
                     OneRepMaxKg = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.OneRepMaxKg : null,
                     Section = exercise.Section,
                     TargetTempo = exercise.TargetTempo,
+                    TargetHeartRateMin = exercise.TargetHeartRateMin,
+                    TargetHeartRateMax = exercise.TargetHeartRateMax,
+                    TargetResistanceLevel = exercise.TargetResistanceLevel,
+                    TargetRpm = exercise.TargetRpm,
                     Name = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Name ?? exercise.Name : exercise.Name,
                     Options = new[]
                     {
@@ -273,7 +279,8 @@ public static class LiftEndpoints
                     Sets = Enumerable.Range(0, exercise.Sets).Select(setOrder => new WorkoutSet
                     {
                         Order = setOrder,
-                        TargetReps = exercise.TargetReps
+                        TargetReps = exercise.TargetReps,
+                        TargetDurationSeconds = exercise.TargetDurationSeconds
                     }).ToList()
                 }).ToList()
             };
@@ -294,7 +301,9 @@ public static class LiftEndpoints
             if (choice is null) return Results.ValidationProblem(new Dictionary<string, string[]> { ["exerciseId"] = ["Choose one of the options saved for this workout."] });
             if (exercise.ExerciseDefinitionId == choice.ExerciseDefinitionId) return Results.Ok(ToResponse(session));
 
-            var hasLoggedValues = exercise.Sets.Any(x => x.Completed || x.WeightKg.HasValue || x.Reps.HasValue);
+            var hasLoggedValues = exercise.Sets.Any(x => x.Completed || x.WeightKg.HasValue || x.Reps.HasValue ||
+                x.Rpe.HasValue || x.Rir.HasValue || x.ActualTempo is not null || x.DurationSeconds.HasValue ||
+                x.HeartRateBpm.HasValue || x.ResistanceLevel.HasValue || x.Rpm.HasValue);
             if (hasLoggedValues && !input.ClearLoggedSets)
                 return Results.Conflict(new { message = "Changing this exercise clears its logged sets. Confirm the change to continue." });
             if (input.ClearLoggedSets)
@@ -306,6 +315,10 @@ public static class LiftEndpoints
                     set.BodyMassKg = null;
                     set.Rpe = null;
                     set.Rir = null;
+                    set.DurationSeconds = null;
+                    set.HeartRateBpm = null;
+                    set.ResistanceLevel = null;
+                    set.Rpm = null;
                     set.Completed = false;
                 }
             }
@@ -337,12 +350,18 @@ public static class LiftEndpoints
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["weightKg"] = ["Enter an external load to complete this strength set."] });
             if (input.Completed && (exercise.Kind is "strength" or "bodyweight") && (input.Reps is null or < 1))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["reps"] = ["Enter at least one rep to complete this set."] });
+            if (input.Completed && exercise.Kind == "cardio" && (input.DurationSeconds is null or < 1))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["durationSeconds"] = ["Enter at least one second to complete a cardio interval."] });
 
             set.WeightKg = input.WeightKg;
             set.Reps = input.Reps;
             set.Rpe = input.Rpe;
             set.Rir = input.Rir;
             set.ActualTempo = string.IsNullOrWhiteSpace(input.ActualTempo) ? null : input.ActualTempo.Trim();
+            set.DurationSeconds = input.DurationSeconds;
+            set.HeartRateBpm = input.HeartRateBpm;
+            set.ResistanceLevel = input.ResistanceLevel;
+            set.Rpm = input.Rpm;
             set.Completed = input.Completed;
             set.BodyMassKg = input.Completed && exercise.Kind == "bodyweight"
                 ? await db.BodyweightEntries.AsNoTracking()
@@ -482,6 +501,11 @@ public static class LiftEndpoints
             slot.TargetReps = input.TargetReps;
             slot.Section = input.Section;
             slot.TargetTempo = string.IsNullOrWhiteSpace(input.TargetTempo) ? null : input.TargetTempo.Trim();
+            slot.TargetHeartRateMin = input.TargetHeartRateMin;
+            slot.TargetHeartRateMax = input.TargetHeartRateMax;
+            slot.TargetResistanceLevel = input.TargetResistanceLevel;
+            slot.TargetRpm = input.TargetRpm;
+            slot.TargetDurationSeconds = input.TargetDurationSeconds;
             var priorOptions = slot.Options.OrderBy(x => x.Order).ToList();
             var nextOptions = resolved.Skip(1).Select((definition, optionOrder) =>
             {
@@ -525,6 +549,25 @@ public static class LiftEndpoints
         if (string.IsNullOrWhiteSpace(tempo)) return true;
         var parts = tempo.Trim().Split('-');
         return parts.Length is 3 or 4 && parts.All(part => int.TryParse(part, out var seconds) && seconds is >= 0 and <= 99);
+    }
+
+    private static Dictionary<string, string[]> ValidateCardioTargets(RoutineInput input)
+    {
+        foreach (var slot in input.Exercises ?? [])
+        {
+            if (slot is null) continue;
+            var hasMin = slot.TargetHeartRateMin.HasValue;
+            var hasMax = slot.TargetHeartRateMax.HasValue;
+            if (hasMin != hasMax || hasMin && (slot.TargetHeartRateMin is < 30 or > 240 || slot.TargetHeartRateMax is < 30 or > 240 || slot.TargetHeartRateMin > slot.TargetHeartRateMax))
+                return new Dictionary<string, string[]> { ["exercises"] = ["Target heart-rate minimum and maximum must form a range from 30 to 240 bpm."] };
+            if (slot.TargetResistanceLevel is < 0 or > 9999.99m)
+                return new Dictionary<string, string[]> { ["exercises"] = ["Target resistance must be between 0 and 9,999.99."] };
+            if (slot.TargetRpm is < 1 or > 300)
+                return new Dictionary<string, string[]> { ["exercises"] = ["Target RPM must be between 1 and 300."] };
+            if (slot.TargetDurationSeconds is < 1 or > 14400)
+                return new Dictionary<string, string[]> { ["exercises"] = ["Target duration must be between 1 second and 4 hours."] };
+        }
+        return [];
     }
 
     private static Dictionary<string, string[]> Validate(RoutineInput input)
@@ -601,6 +644,14 @@ public static class LiftEndpoints
             errors["reps"] = ["Reps must be between 0 and 1,000."];
         if (!IsValidTempo(input.ActualTempo))
             errors["actualTempo"] = ["Tempo should use three or four non-negative counts, such as 3-1-1."];
+        if (input.DurationSeconds is < 0 or > 14400)
+            errors["durationSeconds"] = ["Duration must be between 0 seconds and 4 hours."];
+        if (input.HeartRateBpm is < 30 or > 240)
+            errors["heartRateBpm"] = ["Heart rate must be between 30 and 240 bpm."];
+        if (input.ResistanceLevel is < 0 or > 9999.99m)
+            errors["resistanceLevel"] = ["Resistance must be between 0 and 9,999.99."];
+        if (input.Rpm is < 0 or > 300)
+            errors["rpm"] = ["RPM must be between 0 and 300."];
         if (input.Rpe is < 1 or > 10 || input.Rpe.HasValue && input.Rpe.Value * 2 % 1 != 0)
             errors["rpe"] = ["RPE must use half-point steps from 1 to 10."];
         if (input.Rir is < 0 or > 10 || input.Rir.HasValue && input.Rir.Value * 2 % 1 != 0)
@@ -684,7 +735,8 @@ public static class LiftEndpoints
             }
             tonnageKg += load.Value * (set.Reps ?? 0);
         }
-        return new { totalReps, tonnageKg, tonnageComplete };
+        var applicableTonnage = completed.Count > 0 ? tonnageKg : (decimal?)null;
+        return new { totalReps, tonnageKg = applicableTonnage, tonnageComplete = completed.Count > 0 && tonnageComplete };
     }
 
     private static object ToResponse(Routine routine) => new
@@ -697,6 +749,8 @@ public static class LiftEndpoints
             x.Id, x.Name, exerciseId = x.ExerciseDefinitionId, x.Sets, x.TargetReps,
             section = x.Section,
             targetTempo = x.TargetTempo,
+            x.TargetHeartRateMin, x.TargetHeartRateMax, targetResistanceLevel = x.TargetResistanceLevel,
+            targetRpm = x.TargetRpm, x.TargetDurationSeconds,
             options = new[]
             {
                 new { exerciseId = x.ExerciseDefinitionId, name = x.ExerciseDefinition?.Name ?? x.Name, kind = x.ExerciseDefinition?.Kind ?? "strength" }
@@ -725,13 +779,16 @@ public static class LiftEndpoints
         {
             x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind, oneRepMaxKg = x.OneRepMaxKg,
             section = x.Section, targetTempo = x.TargetTempo,
+            x.TargetHeartRateMin, x.TargetHeartRateMax, targetResistanceLevel = x.TargetResistanceLevel, targetRpm = x.TargetRpm,
             options = x.Options.OrderBy(o => o.Order).Select(o => new
             {
                 o.Id, exerciseId = o.ExerciseDefinitionId, o.Name, o.Kind, oneRepMaxKg = o.OneRepMaxKg
             }),
             sets = x.Sets.OrderBy(s => s.Order).Select(s => new
             {
-                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, actualTempo = s.ActualTempo,
+                s.Id, s.Order, s.TargetReps, targetDurationSeconds = s.TargetDurationSeconds, s.DurationSeconds, s.HeartRateBpm,
+                resistanceLevel = s.ResistanceLevel, s.Rpm,
+                s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, actualTempo = s.ActualTempo,
                 estimatedOneRmKg = EstimateOneRepMax(x.Kind, s),
                 percentageOfOneRm = PercentageOfOneRepMax(x.Kind, x.OneRepMaxKg, s),
                 s.Completed
@@ -757,13 +814,13 @@ public static class LiftEndpoints
     };
 }
 
-public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null);
+public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null, int? TargetHeartRateMin = null, int? TargetHeartRateMax = null, decimal? TargetResistanceLevel = null, decimal? TargetRpm = null, int? TargetDurationSeconds = null);
 public sealed record ExerciseOptionInput(string Name, Guid? ExerciseId = null);
 public sealed record ExerciseLibraryInput(string Name, string Kind, decimal? OneRepMaxKg = null);
 public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);
 public sealed record ExerciseChoiceInput(Guid ExerciseId, bool ClearLoggedSets = false);
-public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null, string? ActualTempo = null);
+public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null, string? ActualTempo = null, int? DurationSeconds = null, int? HeartRateBpm = null, decimal? ResistanceLevel = null, decimal? Rpm = null);
 public sealed record NotesInput(string Notes);
 public sealed record RatingInput(int? Rating, string Note = "");

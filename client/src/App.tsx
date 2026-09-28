@@ -165,7 +165,7 @@ function App() {
     const exercise = active?.exercises.find(item => item.id === workoutExerciseId)
     if (exercise?.exerciseId && exercise.exerciseId !== exerciseId &&
         !window.confirm('Changing this choice clears saved sets and discards unsaved entries for this slot. Continue?')) return
-    const clearLoggedSets = Boolean(exercise?.sets.some(set => set.completed || set.weightKg !== null || set.reps !== null))
+    const clearLoggedSets = Boolean(exercise?.sets.some(set => set.completed || set.weightKg !== null || set.reps !== null || set.rpe !== null || set.rir !== null || set.actualTempo !== null || set.durationSeconds !== null || set.heartRateBpm !== null || set.resistanceLevel !== null || set.rpm !== null))
     await run(async () => {
       setActive(await request<WorkoutSession>(`/api/sessions/${sessionId}/exercises/${workoutExerciseId}/choice`, {
         method: 'PUT', body: json({ exerciseId, clearLoggedSets }),
@@ -386,15 +386,15 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
         <div className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold">{completed} / {total} sets</div>
       </div>
       <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${total ? completed / total * 100 : 0}%` }} /></div>
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/75"><span>{session.metrics.totalReps} total reps</span><span>Tonnage: {session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg{!session.metrics.tonnageComplete ? ' · partial' : ''}</span></div>
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/75"><span>{session.metrics.totalReps} total reps</span><span>Tonnage: {session.metrics.tonnageKg == null ? '—' : `${session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg${!session.metrics.tonnageComplete ? ' · partial' : ''}`}</span></div>
     </div>
     {session.exercises.map((exercise, index) => <div className="card p-5 md:p-6" key={exercise.id}>
-      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Target tempo ${exercise.targetTempo}` : ''}{exercise.oneRepMaxKg ? ` · Entered 1RM ${exercise.oneRepMaxKg} kg` : ''}{exercise.exerciseId && exercise.name !== exercise.slotName ? ` · Using ${exercise.name}` : ''}</p></div></div>
+      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Target tempo ${exercise.targetTempo}` : ''}{exercise.oneRepMaxKg ? ` · Entered 1RM ${exercise.oneRepMaxKg} kg` : ''}{exercise.kind === 'cardio' && exercise.targetHeartRateMin != null && exercise.targetHeartRateMax != null ? ` · Target HR ${exercise.targetHeartRateMin}–${exercise.targetHeartRateMax} bpm` : ''}{exercise.kind === 'cardio' && exercise.targetResistanceLevel != null ? ` · Target resistance ${exercise.targetResistanceLevel}` : ''}{exercise.kind === 'cardio' && exercise.targetRpm != null ? ` · Target ${exercise.targetRpm} RPM` : ''}{exercise.exerciseId && exercise.name !== exercise.slotName ? ` · Using ${exercise.name}` : ''}</p></div></div>
       {exercise.options.length > 1 && <label className="mb-4 block max-w-md text-xs font-semibold text-muted">Choose your exercise for this workout<select className="field mt-1" value={exercise.exerciseId ?? ''} onChange={event => { if (event.target.value) onChooseExercise(session.id, exercise.id, event.target.value) }} disabled={busy}>
         <option value="" disabled>Select an option</option>{exercise.options.map(option => <option key={option.id} value={option.exerciseId ?? ''}>{option.name}</option>)}
       </select></label>}
       {!exercise.exerciseId && <p className="mb-3 rounded-lg bg-[#fff8e7] px-3 py-2 text-sm text-[#74510d]">Choose an exercise option to unlock set logging.</p>}
-      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.rpe}:${set.rir}:${set.actualTempo}:${set.completed}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
+      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.rpe}:${set.rir}:${set.actualTempo}:${set.durationSeconds}:${set.heartRateBpm}:${set.resistanceLevel}:${set.rpm}:${set.completed}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} targetHeartRateMin={exercise.targetHeartRateMin} targetHeartRateMax={exercise.targetHeartRateMax} targetResistanceLevel={exercise.targetResistanceLevel} targetRpm={exercise.targetRpm} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
     </div>)}
     <div className="card p-5 md:p-6"><label className="block text-sm font-bold" htmlFor="workout-notes">Workout notes</label>
       <textarea id="workout-notes" className="field mt-3 min-h-28 resize-y" maxLength={2000} value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel?" />
@@ -407,20 +407,42 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
   </div>
 }
 
-function SetRow({ set, kind, oneRepMaxKg, busy, disabled, onSave }: { set: WorkoutSet; kind: ExerciseKind; oneRepMaxKg: number | null; busy: boolean; disabled: boolean; onSave: (value: WorkoutSetInput) => void }) {
+function SetRow({ set, kind, oneRepMaxKg, targetHeartRateMin, targetHeartRateMax, targetResistanceLevel, targetRpm, busy, disabled, onSave }: {
+  set: WorkoutSet; kind: ExerciseKind; oneRepMaxKg: number | null
+  targetHeartRateMin: number | null; targetHeartRateMax: number | null; targetResistanceLevel: number | null; targetRpm: number | null
+  busy: boolean; disabled: boolean; onSave: (value: WorkoutSetInput) => void
+}) {
   const [weight, setWeight] = useState(set.weightKg?.toString() ?? '')
   const [reps, setReps] = useState(set.reps?.toString() ?? '')
   const [rpe, setRpe] = useState(set.rpe?.toString() ?? '')
   const [rir, setRir] = useState(set.rir?.toString() ?? '')
   const [actualTempo, setActualTempo] = useState(set.actualTempo ?? '')
+  const [duration, setDuration] = useState(set.durationSeconds?.toString() ?? '')
+  const [heartRate, setHeartRate] = useState(set.heartRateBpm?.toString() ?? '')
+  const [resistance, setResistance] = useState(set.resistanceLevel?.toString() ?? '')
+  const [rpm, setRpm] = useState(set.rpm?.toString() ?? '')
   const value = (completed: boolean) => ({
-    weightKg: weight === '' ? null : Number(weight),
-    reps: reps === '' ? null : Number(reps),
-    rpe: rpe === '' ? null : Number(rpe),
-    rir: rir === '' ? null : Number(rir),
-    actualTempo: actualTempo.trim() || null,
+    weightKg: kind === 'cardio' || weight === '' ? null : Number(weight),
+    reps: kind === 'cardio' || reps === '' ? null : Number(reps),
+    rpe: kind === 'cardio' || rpe === '' ? null : Number(rpe),
+    rir: kind === 'cardio' || rir === '' ? null : Number(rir),
+    actualTempo: kind === 'cardio' ? null : actualTempo.trim() || null,
+    durationSeconds: kind === 'cardio' && duration !== '' ? Number(duration) : null,
+    heartRateBpm: kind === 'cardio' && heartRate !== '' ? Number(heartRate) : null,
+    resistanceLevel: kind === 'cardio' && resistance !== '' ? Number(resistance) : null,
+    rpm: kind === 'cardio' && rpm !== '' ? Number(rpm) : null,
     completed,
   })
+
+  if (kind === 'cardio') return <div className={`grid grid-cols-[28px_1fr_1fr] items-end gap-2 rounded-xl p-3 sm:grid-cols-[36px_repeat(4,minmax(72px,1fr))_auto] ${set.completed ? 'bg-[#f2f9e7]' : 'bg-paper'}`}>
+    <div className="pb-2 text-center text-sm font-black text-muted">{set.order + 1}</div>
+    <label className="text-xs font-semibold text-muted">Duration (sec){set.targetDurationSeconds != null && <span className="block font-normal">Target {durationLabel(set.targetDurationSeconds)}</span>}<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="14400" value={duration} onChange={e => setDuration(e.target.value)} disabled={disabled} /></label>
+    <label className="text-xs font-semibold text-muted">Heart rate (bpm){targetHeartRateMin != null && targetHeartRateMax != null && <span className="block font-normal">Target {targetHeartRateMin}–{targetHeartRateMax}</span>}<input className="field mt-1 !bg-white !py-2" type="number" min="30" max="240" value={heartRate} onChange={e => setHeartRate(e.target.value)} disabled={disabled} /></label>
+    <label className="text-xs font-semibold text-muted">Resistance{targetResistanceLevel != null && <span className="block font-normal">Target {targetResistanceLevel}</span>}<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="9999.99" step="0.1" value={resistance} onChange={e => setResistance(e.target.value)} disabled={disabled} /></label>
+    <label className="text-xs font-semibold text-muted">RPM{targetRpm != null && <span className="block font-normal">Target {targetRpm}</span>}<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="300" step="0.1" value={rpm} onChange={e => setRpm(e.target.value)} disabled={disabled} /></label>
+    <div className="col-span-3 flex flex-wrap justify-end gap-2 sm:col-span-1"><button type="button" className="button-quiet !px-3 !py-2" disabled={busy || disabled} onClick={() => onSave(value(set.completed))}>Save</button>
+      <button type="button" className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-ink text-white' : 'bg-accent text-ink'}`} disabled={busy || disabled} onClick={() => onSave(value(!set.completed))}>{set.completed ? '✓ Done' : 'Complete'}</button><RestTimer /></div>
+  </div>
 
   return <div className={`grid grid-cols-[28px_1fr_1fr] items-end gap-2 rounded-xl p-3 sm:grid-cols-[36px_repeat(5,minmax(62px,1fr))_auto] ${set.completed ? 'bg-[#f2f9e7]' : 'bg-paper'}`}>
     <div className="pb-2 text-center text-sm font-black text-muted">{set.order + 1}</div>
@@ -464,7 +486,7 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   if (!routines.length) return <EmptyState title="Build your first routine" body="Add exercises, set counts and rep targets. You can change them any time." action="Create a routine" onAction={onNew} />
   return <div className="grid gap-5 md:grid-cols-2">{routines.map(routine => <div className="card flex flex-col p-6" key={routine.id}>
     <div className="flex items-start justify-between gap-3"><div><p className="eyebrow mb-2">Routine</p><h2 className="text-2xl font-black tracking-tight">{routine.name}</h2></div><span className="rounded-lg bg-paper px-3 py-1 text-xs font-bold text-muted">{routine.exercises.length} exercises</span></div>
-    <div className="my-6 flex-1 divide-y divide-line">{routine.exercises.map(exercise => <div key={exercise.id} className="flex justify-between gap-4 py-3 text-sm"><div><p className="font-semibold">{exercise.name}</p><p className="mt-1 text-xs text-muted">{exercise.options.map(option => option.name).join(' · ')}</p><p className="mt-1 text-[11px] font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Tempo ${exercise.targetTempo}` : ''}</p></div><span className="whitespace-nowrap text-muted">{exercise.sets} × {exercise.targetReps}</span></div>)}</div>
+    <div className="my-6 flex-1 divide-y divide-line">{routine.exercises.map(exercise => <div key={exercise.id} className="flex justify-between gap-4 py-3 text-sm"><div><p className="font-semibold">{exercise.name}</p><p className="mt-1 text-xs text-muted">{exercise.options.map(option => option.name).join(' · ')}</p><p className="mt-1 text-[11px] font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Tempo ${exercise.targetTempo}` : ''}{exercise.targetHeartRateMin != null && exercise.targetHeartRateMax != null ? ` · HR ${exercise.targetHeartRateMin}–${exercise.targetHeartRateMax}` : ''}{exercise.targetResistanceLevel != null ? ` · Resistance ${exercise.targetResistanceLevel}` : ''}{exercise.targetRpm != null ? ` · ${exercise.targetRpm} RPM` : ''}{exercise.targetDurationSeconds != null ? ` · ${durationLabel(exercise.targetDurationSeconds)}` : ''}</p></div><span className="whitespace-nowrap text-muted">{exercise.sets} × {exercise.targetReps}</span></div>)}</div>
     <div className="flex flex-wrap gap-2"><button className="button-primary" disabled={busy || hasActive} title={hasActive ? 'Finish your current workout first' : undefined} onClick={() => onStart(routine)}>Start workout</button><button className="button-quiet" onClick={() => onEdit(routine)}>Edit</button><button className="px-3 text-sm font-semibold text-muted hover:text-red-700" disabled={busy} onClick={() => onDelete(routine)}>Delete</button></div>
   </div>)}</div>
 }
@@ -582,7 +604,7 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
     <div><h2 className="mb-4 text-xl font-black">Recent workouts</h2>
       {history.length ? <div className="space-y-3">{history.map(session => <details className="card group p-5" key={session.id}>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><div><p className="text-xs font-semibold text-muted">{dateLabel(session.completedAt!)}</p><h3 className="mt-1 text-lg font-black">{session.name}</h3><p className="mt-1 text-sm text-muted">{session.exercises.reduce((sum, x) => sum + x.sets.filter(s => s.completed).length, 0)} completed sets · {session.metrics.totalReps} reps · {session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg tonnage{!session.metrics.tonnageComplete ? ' (partial)' : ''} · {durationLabel(session.durationSeconds)}{session.rating != null ? ` · Rated ${session.rating}/5` : ''}</p></div><span className="text-2xl text-muted group-open:rotate-45">+</span></summary>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><div><p className="text-xs font-semibold text-muted">{dateLabel(session.completedAt!)}</p><h3 className="mt-1 text-lg font-black">{session.name}</h3><p className="mt-1 text-sm text-muted">{session.exercises.reduce((sum, x) => sum + x.sets.filter(s => s.completed).length, 0)} completed sets · {session.metrics.totalReps} reps · {session.metrics.tonnageKg == null ? 'tonnage —' : `${session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg tonnage${!session.metrics.tonnageComplete ? ' (partial)' : ''}`} · {durationLabel(session.durationSeconds)}{session.rating != null ? ` · Rated ${session.rating}/5` : ''}</p></div><span className="text-2xl text-muted group-open:rotate-45">+</span></summary>
         <div className="mt-5 border-t border-line pt-4">{session.exercises.map(exercise => <div key={exercise.id} className="mb-4"><h4 className="text-sm font-bold">{exercise.name}</h4><p className="mt-1 text-sm text-muted">{exercise.sets.filter(s => s.completed).map(s => describeSet(exercise, s)).join(' · ') || 'No completed sets'}</p></div>)}
           {session.ratingNote && <p className="rounded-xl bg-paper p-3 text-sm text-muted">Session note: {session.ratingNote}</p>}{session.notes && <p className="mt-2 rounded-xl bg-paper p-3 text-sm text-muted">{session.notes}</p>}</div>
       </details>)}</div> : <EmptyState title="No finished workouts yet" body="Finish a session to see it here." />}
@@ -628,7 +650,9 @@ function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: R
     id: x.id, name: x.name, exerciseId: x.exerciseId,
     options: x.options.map(option => ({ name: option.name, exerciseId: option.exerciseId })),
     sets: x.sets, targetReps: x.targetReps, section: x.section, targetTempo: x.targetTempo ?? '',
-  })) ?? [{ name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8, section: 'work', targetTempo: '' }])
+    targetHeartRateMin: x.targetHeartRateMin, targetHeartRateMax: x.targetHeartRateMax,
+    targetResistanceLevel: x.targetResistanceLevel, targetRpm: x.targetRpm, targetDurationSeconds: x.targetDurationSeconds,
+  })) ?? [{ name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8, section: 'work', targetTempo: '', targetHeartRateMin: null, targetHeartRateMax: null, targetResistanceLevel: null, targetRpm: null, targetDurationSeconds: null }])
 
   function change(index: number, field: 'name' | 'sets' | 'targetReps' | 'section' | 'targetTempo', value: string) {
     setExercises(current => current.map((item, i) => {
@@ -638,6 +662,11 @@ function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: R
       if (field === 'targetTempo') return { ...item, targetTempo: value }
       return { ...item, [field]: Number(value) }
     }))
+  }
+
+  function changeCardioTarget(index: number, field: 'targetHeartRateMin' | 'targetHeartRateMax' | 'targetResistanceLevel' | 'targetRpm' | 'targetDurationSeconds', value: string) {
+    const numeric = value === '' ? null : Number(value)
+    setExercises(current => current.map((item, i) => i === index ? { ...item, [field]: numeric } : item))
   }
 
   function changeOption(index: number, optionIndex: number, value: string) {
@@ -673,9 +702,17 @@ function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: R
           <label className="text-xs font-semibold text-muted">Target tempo (optional)<input className="field mt-1" value={exercise.targetTempo ?? ''} onChange={e => change(index, 'targetTempo', e.target.value)} maxLength={20} placeholder="3-1-1" /></label>
           <label className="text-xs font-semibold text-muted">Sets<input className="field mt-1" type="number" min="1" max="10" value={exercise.sets} onChange={e => change(index, 'sets', e.target.value)} required /></label>
           <label className="text-xs font-semibold text-muted">Reps<input className="field mt-1" type="number" min="1" max="100" value={exercise.targetReps} onChange={e => change(index, 'targetReps', e.target.value)} required /></label></div>
+        {exercise.options.some(option => library.some(definition => definition.id === option.exerciseId && definition.kind === 'cardio')) && <div className="mt-4 rounded-xl bg-white p-4">
+          <p className="text-xs font-bold text-muted">Cardio targets · enter manually</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2"><label className="text-xs font-semibold text-muted">Target duration (seconds)<input className="field mt-1" type="number" min="1" max="14400" value={exercise.targetDurationSeconds ?? ''} onChange={e => changeCardioTarget(index, 'targetDurationSeconds', e.target.value)} placeholder="e.g. 900" /></label>
+            <label className="text-xs font-semibold text-muted">Target resistance level<input className="field mt-1" type="number" min="0" max="9999.99" step="0.1" value={exercise.targetResistanceLevel ?? ''} onChange={e => changeCardioTarget(index, 'targetResistanceLevel', e.target.value)} /></label>
+            <label className="text-xs font-semibold text-muted">Target RPM<input className="field mt-1" type="number" min="1" max="300" step="0.1" value={exercise.targetRpm ?? ''} onChange={e => changeCardioTarget(index, 'targetRpm', e.target.value)} /></label>
+            <div className="grid grid-cols-2 gap-2"><label className="text-xs font-semibold text-muted">Target HR min<input className="field mt-1" type="number" min="30" max="240" value={exercise.targetHeartRateMin ?? ''} onChange={e => changeCardioTarget(index, 'targetHeartRateMin', e.target.value)} placeholder="bpm" /></label>
+              <label className="text-xs font-semibold text-muted">Target HR max<input className="field mt-1" type="number" min="30" max="240" value={exercise.targetHeartRateMax ?? ''} onChange={e => changeCardioTarget(index, 'targetHeartRateMax', e.target.value)} placeholder="bpm" /></label></div></div>
+        </div>}
       </div>)}</div>
       <datalist id="exercise-library-options">{library.map(item => <option key={item.id} value={item.name}>{item.kind}</option>)}</datalist>
-      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8, section: 'work', targetTempo: '' }])}>+ Add slot</button>
+      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8, section: 'work', targetTempo: '', targetHeartRateMin: null, targetHeartRateMax: null, targetResistanceLevel: null, targetRpm: null, targetDurationSeconds: null }])}>+ Add slot</button>
       <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Cancel</button><button className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save routine'}</button></div>
     </form>
   </div>

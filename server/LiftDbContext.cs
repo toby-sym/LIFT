@@ -47,6 +47,8 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.Section).HasMaxLength(20);
             entity.Property(x => x.TargetTempo).HasMaxLength(20);
+            entity.Property(x => x.TargetResistanceLevel).HasPrecision(7, 2);
+            entity.Property(x => x.TargetRpm).HasPrecision(7, 2);
             entity.HasIndex(x => new { x.RoutineId, x.Order });
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasMany(x => x.Options).WithOne().HasForeignKey(x => x.RoutineExerciseId).OnDelete(DeleteBehavior.Cascade);
@@ -74,6 +76,8 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Section).HasMaxLength(20);
             entity.Property(x => x.TargetTempo).HasMaxLength(20);
             entity.Property(x => x.OneRepMaxKg).HasPrecision(7, 2);
+            entity.Property(x => x.TargetResistanceLevel).HasPrecision(7, 2);
+            entity.Property(x => x.TargetRpm).HasPrecision(7, 2);
             entity.HasIndex(x => new { x.SessionId, x.Order });
             entity.HasOne<RoutineExercise>().WithMany().HasForeignKey(x => x.RoutineSlotId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
@@ -95,6 +99,8 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Rpe).HasPrecision(3, 1);
             entity.Property(x => x.Rir).HasPrecision(3, 1);
             entity.Property(x => x.ActualTempo).HasMaxLength(20);
+            entity.Property(x => x.ResistanceLevel).HasPrecision(7, 2);
+            entity.Property(x => x.Rpm).HasPrecision(7, 2);
             entity.HasIndex(x => new { x.ExerciseId, x.Order });
         });
     }
@@ -140,6 +146,11 @@ public sealed class RoutineExercise
     public int TargetReps { get; set; }
     public string Section { get; set; } = "work";
     public string? TargetTempo { get; set; }
+    public int? TargetHeartRateMin { get; set; }
+    public int? TargetHeartRateMax { get; set; }
+    public decimal? TargetResistanceLevel { get; set; }
+    public decimal? TargetRpm { get; set; }
+    public int? TargetDurationSeconds { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
     public List<RoutineExerciseOption> Options { get; set; } = [];
 }
@@ -181,6 +192,10 @@ public sealed class WorkoutExercise
     public decimal? OneRepMaxKg { get; set; }
     public string Section { get; set; } = "work";
     public string? TargetTempo { get; set; }
+    public int? TargetHeartRateMin { get; set; }
+    public int? TargetHeartRateMax { get; set; }
+    public decimal? TargetResistanceLevel { get; set; }
+    public decimal? TargetRpm { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
     public List<WorkoutExerciseOption> Options { get; set; } = [];
     public List<WorkoutSet> Sets { get; set; } = [];
@@ -204,11 +219,16 @@ public sealed class WorkoutSet
     public Guid ExerciseId { get; set; }
     public int Order { get; set; }
     public int TargetReps { get; set; }
+    public int? TargetDurationSeconds { get; set; }
     public decimal? WeightKg { get; set; }
     public decimal? BodyMassKg { get; set; }
     public int? Reps { get; set; }
     public decimal? Rpe { get; set; }
     public decimal? Rir { get; set; }
     public string? ActualTempo { get; set; }
+    public int? DurationSeconds { get; set; }
+    public int? HeartRateBpm { get; set; }
+    public decimal? ResistanceLevel { get; set; }
+    public decimal? Rpm { get; set; }
     public bool Completed { get; set; }
 }
