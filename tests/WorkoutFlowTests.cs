@@ -431,6 +431,24 @@ public sealed class WorkoutFlowTests
         Assert.Equal(100m, selected.GetProperty("oneRepMaxKg").GetDecimal());
         Assert.Equal(80m, set.GetProperty("percentageOfOneRm").GetDecimal());
         Assert.Equal(98.6m, set.GetProperty("estimatedOneRmKg").GetDecimal());
+
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/sessions/{sessionId}/finish", null)).StatusCode);
+        var stats = await client.GetFromJsonAsync<JsonElement>("/api/stats");
+        Assert.Equal(400m, stats.GetProperty("sessionTonnageRecordKg").GetDecimal());
+        var record = stats.GetProperty("personalRecords")[0];
+        Assert.Equal(80m, record.GetProperty("heaviestSetKg").GetDecimal());
+        Assert.Equal(5, record.GetProperty("mostReps").GetInt32());
+        Assert.Equal(80m, record.GetProperty("mostRepsAtKg").GetDecimal());
+        Assert.Equal(98.6m, record.GetProperty("estimatedOneRmKg").GetDecimal());
+
+        var progressResponse = await client.GetAsync($"/api/exercises/{exerciseId}/progress");
+        Assert.Equal(HttpStatusCode.OK, progressResponse.StatusCode);
+        var progress = await progressResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var point = progress.GetProperty("points")[0];
+        Assert.Equal(80m, point.GetProperty("bestLoadKg").GetDecimal());
+        Assert.Equal(5, point.GetProperty("totalReps").GetInt32());
+        Assert.Equal(98.6m, point.GetProperty("estimatedOneRmKg").GetDecimal());
+        Assert.Equal(400m, point.GetProperty("volumeKg").GetDecimal());
     }
 
     [Fact]

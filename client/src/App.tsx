@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, json, request, type BodyweightEntry, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet, type WorkoutSetInput } from './api'
+import { ApiError, json, request, type BodyweightEntry, type ExerciseDefinition, type ExerciseKind, type ExerciseProgress, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet, type WorkoutSetInput } from './api'
 
 type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 type Account = { email: string }
@@ -38,7 +38,7 @@ function App() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [active, setActive] = useState<WorkoutSession | null>(null)
   const [history, setHistory] = useState<WorkoutSession[]>([])
-  const [stats, setStats] = useState<Stats>({ workouts: 0, weeklySets: 0, bests: [] })
+  const [stats, setStats] = useState<Stats>({ workouts: 0, weeklySets: 0, bests: [], personalRecords: [], sessionTonnageRecordKg: null })
   const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseDefinition[]>([])
   const [bodyweightEntries, setBodyweightEntries] = useState<BodyweightEntry[]>([])
   const [editing, setEditing] = useState<Routine | 'new' | null>(null)
@@ -260,7 +260,7 @@ function App() {
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
         {page === 'exercises' && <ExercisesPage exercises={exerciseLibrary} onNew={() => setEditingExercise('new')}
           onEdit={setEditingExercise} onDelete={deleteExercise} />}
-        {page === 'progress' && <ProgressPage stats={stats} entries={bodyweightEntries} onSave={saveBodyweight} onDelete={deleteBodyweight} />}
+        {page === 'progress' && <ProgressPage stats={stats} entries={bodyweightEntries} exercises={exerciseLibrary} onSave={saveBodyweight} onDelete={deleteBodyweight} />}
         {page === 'history' && <HistoryPage history={history} />}
         </main>
       </div>
@@ -513,8 +513,8 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   </div>)}</div>
 }
 
-function ProgressPage({ stats, entries, onSave, onDelete }: {
-  stats: Stats; entries: BodyweightEntry[]
+function ProgressPage({ stats, entries, exercises, onSave, onDelete }: {
+  stats: Stats; entries: BodyweightEntry[]; exercises: ExerciseDefinition[]
   onSave: (id: string | null, value: { weightKg: number; measuredOn: string }) => Promise<void>
   onDelete: (entry: BodyweightEntry) => void
 }) {
@@ -566,9 +566,10 @@ function ProgressPage({ stats, entries, onSave, onDelete }: {
   }
 
   return <div className="space-y-5">
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-3">
       <div className="card metric-card"><p className="eyebrow">Completed workouts</p><p className="metric-value">{stats.workouts}</p><p className="metric-caption">All time</p></div>
       <div className="card metric-card"><p className="eyebrow">Work sets</p><p className="metric-value">{stats.weeklySets}</p><p className="metric-caption">This week</p></div>
+      <div className="card metric-card"><p className="eyebrow">Best session tonnage</p><p className="metric-value">{stats.sessionTonnageRecordKg == null ? '—' : stats.sessionTonnageRecordKg.toLocaleString(undefined, { maximumFractionDigits: 1 })}</p><p className="metric-caption">kg · complete load data</p></div>
     </div>
     <section className="card p-5 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="eyebrow">Bodyweight</p><h2 className="mt-2 text-2xl font-black">Your trend over time</h2><p className="mt-2 text-sm text-muted">{entries.length ? `${entries.length} saved ${entries.length === 1 ? 'measurement' : 'measurements'}` : 'Add an occasional reading to start your trend.'}</p></div>{entries.length > 0 && <div className="rounded-xl bg-paper px-4 py-3"><p className="text-xs font-semibold text-muted">Latest</p><p className="mt-1 text-2xl font-black">{entries[0].weightKg} <span className="text-sm">kg</span></p></div>}</div>
@@ -600,8 +601,77 @@ function ProgressPage({ stats, entries, onSave, onDelete }: {
         </div>)}</div> : <p className="mt-4 text-sm text-muted">No measurements saved yet.</p>}
       </section>
     </div>
-    <div className="card p-5 md:p-6"><p className="eyebrow">Heaviest recorded sets</p>{stats.bests.length ? <div className="mt-4 divide-y divide-line">{stats.bests.map(best => <div className="flex justify-between gap-3 py-3 text-sm" key={best.exerciseId ?? best.exercise}><span className="font-semibold">{best.exercise}</span><span className="whitespace-nowrap font-black">{best.weightKg} kg</span></div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your best lifts will appear as you log completed sets.</p>}</div>
+    <div className="card p-5 md:p-6"><div className="flex items-start justify-between gap-3"><div><p className="eyebrow">Personal records</p><h2 className="mt-2 text-xl font-black">Best sets by exercise</h2></div><span className="text-xs text-muted">updated from completed workouts</span></div>
+      {stats.personalRecords.length ? <div className="mt-4 divide-y divide-line">{stats.personalRecords.map(record => <div className="grid gap-2 py-4 sm:grid-cols-[minmax(0,1fr)_2fr] sm:items-center" key={record.exerciseId ?? record.exercise}>
+        <p className="font-bold">{record.exercise}</p><div className="flex flex-wrap gap-2 text-xs">{record.heaviestSetKg != null && <span className="rounded-lg bg-paper px-2.5 py-1.5">Heaviest {record.heaviestSetKg} kg</span>}{record.mostReps != null && <span className="rounded-lg bg-paper px-2.5 py-1.5">Most reps {record.mostReps} at {record.mostRepsAtKg} kg</span>}{record.estimatedOneRmKg != null && <span className="rounded-lg bg-paper px-2.5 py-1.5">Estimated 1RM {record.estimatedOneRmKg} kg</span>}</div>
+      </div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your records will appear after you finish a workout with logged sets.</p>}
+    </div>
+    <ExerciseProgressPanel exercises={exercises} />
   </div>
+}
+
+function ExerciseProgressPanel({ exercises }: { exercises: ExerciseDefinition[] }) {
+  type Metric = 'load' | 'reps' | 'estimated' | 'volume'
+  const [selected, setSelected] = useState(exercises[0]?.id ?? '')
+  const [progress, setProgress] = useState<ExerciseProgress | null>(null)
+  const [metric, setMetric] = useState<Metric>('load')
+  const [pending, setPending] = useState(exercises.length > 0)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    if (!selected) return
+    let cancelled = false
+    request<ExerciseProgress>(`/api/exercises/${selected}/progress`)
+      .then(value => { if (!cancelled) { setProgress(value); setError('') } })
+      .catch(cause => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Could not load exercise history.') })
+      .finally(() => { if (!cancelled) setPending(false) })
+    return () => { cancelled = true }
+  }, [selected])
+
+  const metrics: { id: Metric; label: string; unit: string }[] = [
+    { id: 'load', label: 'Best load', unit: 'kg' },
+    { id: 'reps', label: 'Total reps', unit: 'reps' },
+    { id: 'estimated', label: 'Estimated 1RM', unit: 'kg' },
+    { id: 'volume', label: 'Volume', unit: 'kg' },
+  ]
+  const activeMetric = metrics.find(item => item.id === metric)!
+  const values = (progress?.points ?? []).map((point, index) => ({
+    point,
+    index,
+    value: metric === 'load' ? point.bestLoadKg : metric === 'reps' ? point.totalReps : metric === 'estimated' ? point.estimatedOneRmKg : point.volumeKg,
+  })).filter((item): item is typeof item & { value: number } => item.value != null)
+  const rawValues = values.map(item => item.value)
+  const minimum = rawValues.length ? Math.min(...rawValues) : 0
+  const maximum = rawValues.length ? Math.max(...rawValues) : 0
+  const padding = Math.max((maximum - minimum) * 0.16, metric === 'reps' ? 1 : 1)
+  const low = Math.max(0, minimum - padding)
+  const high = maximum + padding
+  const chartPoints = values.map(item => ({
+    ...item,
+    x: (progress?.points.length ?? 0) < 2 ? 400 : 32 + item.index / ((progress?.points.length ?? 2) - 1) * 736,
+    y: 180 - (item.value - low) / (high - low) * 145,
+  }))
+  const path = chartPoints.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+
+  return <section className="card p-5 md:p-6">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="eyebrow">Exercise progress</p><h2 className="mt-2 text-xl font-black">Training trend by movement</h2></div>
+      <label className="w-full max-w-sm text-xs font-semibold text-muted">Exercise<select className="field mt-1" value={selected} onChange={event => { setSelected(event.target.value); setPending(true); setError('') }} disabled={!exercises.length}>
+        {!exercises.length && <option value="">No exercises yet</option>}{[...exercises].sort((a, b) => a.name.localeCompare(b.name)).map(exercise => <option value={exercise.id} key={exercise.id}>{exercise.name}</option>)}
+      </select></label>
+    </div>
+    <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="Progress chart measure">{metrics.map(item => <button key={item.id} className={metric === item.id ? 'button-primary !py-2' : 'button-quiet !py-2'} onClick={() => setMetric(item.id)}>{item.label}</button>)}</div>
+    {pending ? <div className="mt-5 rounded-xl bg-paper p-10 text-center text-sm text-muted">Loading exercise history…</div>
+      : error ? <p className="mt-5 rounded-xl bg-[#fff4f2] p-4 text-sm text-red-700" role="alert">{error}</p>
+      : chartPoints.length ? <div className="mt-5 overflow-hidden rounded-xl bg-[#f7f9f5] p-2 sm:p-4">
+        <p className="px-2 text-sm font-semibold">{activeMetric.label} · {activeMetric.unit}</p>
+        <svg viewBox="0 0 800 220" className="mt-2 h-56 w-full" role="img" aria-label={`${activeMetric.label} progress over ${chartPoints.length} workouts`}>
+          {[35, 107, 180].map(y => <line key={y} x1="24" x2="776" y1={y} y2={y} stroke="#e1e7dc" strokeDasharray="4 6" />)}
+          {chartPoints.length > 1 && <path d={path} fill="none" stroke="#8fbd42" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
+          {chartPoints.map(point => <circle key={`${point.point.date}:${point.index}`} cx={point.x} cy={point.y} r="5" fill="#172328" stroke="white" strokeWidth="2"><title>{`${point.value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${activeMetric.unit} on ${dateLabel(point.point.date)}`}</title></circle>)}
+        </svg>
+        <div className="flex justify-between px-2 text-xs text-muted"><span>{dateLabel(chartPoints[0].point.date)}</span><span>{dateLabel(chartPoints[chartPoints.length - 1].point.date)}</span></div>
+        <p className="mt-2 px-2 text-xs text-muted">{chartPoints.length} completed workout{chartPoints.length === 1 ? '' : 's'} with this measure.</p>
+      </div> : <div className="mt-5 rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted">No {activeMetric.label.toLowerCase()} data for this exercise yet.</div>}
+  </section>
 }
 
 function HistoryPage({ history }: { history: WorkoutSession[] }) {

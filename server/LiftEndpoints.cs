@@ -427,6 +427,40 @@ public static class LiftEndpoints
             return Results.NoContent();
         });
 
+        api.MapGet("/exercises/{id:guid}/progress", async (Guid id, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var exercise = await db.ExerciseLibrary.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
+            if (exercise is null) return Results.NotFound();
+            var sessions = await SessionQuery(db)
+                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null)
+                .OrderByDescending(x => x.CompletedAt)
+                .Take(365)
+                .ToListAsync();
+            var points = new List<object>();
+            foreach (var session in sessions.OrderBy(x => x.CompletedAt))
+            {
+                var sets = session.Exercises.Where(x => x.ExerciseDefinitionId == id)
+                    .SelectMany(x => x.Sets.Where(set => set.Completed).Select(set => new { x.Kind, Set = set }))
+                    .ToList();
+                if (sets.Count == 0) continue;
+                var loads = sets.Select(x => EffectiveLoad(x.Kind, x.Set)).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+                var reps = sets.Sum(x => x.Set.Reps ?? 0);
+                var estimatedMax = sets.Select(x => EstimateOneRepMax(x.Kind, x.Set)).Where(x => x.HasValue).Select(x => x!.Value).ToList();
+                var volumeComplete = sets.All(x => EffectiveLoad(x.Kind, x.Set).HasValue && x.Set.Reps.HasValue);
+                decimal? volumeKg = volumeComplete ? sets.Sum(x => EffectiveLoad(x.Kind, x.Set)!.Value * x.Set.Reps!.Value) : null;
+                points.Add(new
+                {
+                    date = session.CompletedAt,
+                    bestLoadKg = loads.Count > 0 ? loads.Max() : (decimal?)null,
+                    totalReps = reps,
+                    estimatedOneRmKg = estimatedMax.Count > 0 ? estimatedMax.Max() : (decimal?)null,
+                    volumeKg,
+                    volumeComplete
+                });
+            }
+            return Results.Ok(new { exerciseId = exercise.Id, exercise.Name, points });
+        });
+
         api.MapGet("/stats", async (LiftDbContext db, ClaimsPrincipal user) =>
         {
             var sessions = await SessionQuery(db)
@@ -443,7 +477,34 @@ public static class LiftEndpoints
                 .Select(g => new { exerciseId = g.First().ExerciseDefinitionId, exercise = g.First().Name, weightKg = g.Max(x => x.WeightKg) })
                 .OrderBy(x => x.exercise)
                 .ToList();
-            return Results.Ok(new { workouts = sessions.Count, weeklySets, bests });
+            var personalRecords = sessions.SelectMany(session => session.Exercises
+                    .Where(exercise => exercise.Kind != "cardio")
+                    .SelectMany(exercise => exercise.Sets.Where(set => set.Completed)
+                        .Select(set => new { exercise.ExerciseDefinitionId, exercise.Name, exercise.Kind, Set = set })))
+                .GroupBy(x => x.ExerciseDefinitionId?.ToString() ?? Normalize(x.Name), StringComparer.Ordinal)
+                .Select(group =>
+                {
+                    var rows = group.ToList();
+                    var loadedRows = rows.Select(row => new { row.ExerciseDefinitionId, row.Name, Load = EffectiveLoad(row.Kind, row.Set), Reps = row.Set.Reps })
+                        .Where(row => row.Load.HasValue).ToList();
+                    var mostReps = loadedRows.Where(row => row.Reps.HasValue).OrderByDescending(row => row.Reps).FirstOrDefault();
+                    var estimates = rows.Select(row => EstimateOneRepMax(row.Kind, row.Set)).Where(value => value.HasValue).Select(value => value!.Value).ToList();
+                    return new
+                    {
+                        exerciseId = rows[0].ExerciseDefinitionId,
+                        exercise = rows[0].Name,
+                        heaviestSetKg = loadedRows.Count > 0 ? loadedRows.Max(row => row.Load) : (decimal?)null,
+                        mostReps = mostReps?.Reps,
+                        mostRepsAtKg = mostReps?.Load,
+                        estimatedOneRmKg = estimates.Count > 0 ? estimates.Max() : (decimal?)null
+                    };
+                })
+                .OrderBy(row => row.exercise)
+                .ToList();
+            var tonnageRecords = sessions.Select(SessionTonnage).Where(result => result.Complete && result.TonnageKg.HasValue)
+                .Select(result => result.TonnageKg!.Value).ToList();
+            var sessionTonnageRecordKg = tonnageRecords.Count > 0 ? tonnageRecords.Max() : (decimal?)null;
+            return Results.Ok(new { workouts = sessions.Count, weeklySets, bests, personalRecords, sessionTonnageRecordKg });
         });
     }
 
@@ -731,25 +792,33 @@ public static class LiftEndpoints
         var completed = session.Exercises
             .Where(exercise => exercise.Kind != "cardio")
             .SelectMany(exercise => exercise.Sets.Where(set => set.Completed)
-                .Select(set => new { exercise.Kind, set.WeightKg, set.BodyMassKg, set.Reps }))
+                .Select(set => set.Reps))
             .ToList();
-        var totalReps = completed.Sum(x => x.Reps ?? 0);
+        var totalReps = completed.Sum(reps => reps ?? 0);
+        var (tonnageKg, tonnageComplete) = SessionTonnage(session);
+        return new { totalReps, tonnageKg, tonnageComplete };
+    }
+
+    private static (decimal? TonnageKg, bool Complete) SessionTonnage(WorkoutSession session)
+    {
+        var completed = session.Exercises
+            .Where(exercise => exercise.Kind != "cardio")
+            .SelectMany(exercise => exercise.Sets.Where(set => set.Completed).Select(set => new { exercise.Kind, Set = set }))
+            .ToList();
+        if (completed.Count == 0) return (null, false);
         var tonnageKg = 0m;
         var tonnageComplete = true;
         foreach (var set in completed)
         {
-            decimal? load = set.Kind == "bodyweight"
-                ? set.BodyMassKg.HasValue ? set.BodyMassKg.Value + (set.WeightKg ?? 0m) : null
-                : set.WeightKg;
+            var load = EffectiveLoad(set.Kind, set.Set);
             if (!load.HasValue)
             {
                 tonnageComplete = false;
                 continue;
             }
-            tonnageKg += load.Value * (set.Reps ?? 0);
+            tonnageKg += load.Value * (set.Set.Reps ?? 0);
         }
-        var applicableTonnage = completed.Count > 0 ? tonnageKg : (decimal?)null;
-        return new { totalReps, tonnageKg = applicableTonnage, tonnageComplete = completed.Count > 0 && tonnageComplete };
+        return (tonnageKg, tonnageComplete);
     }
 
     private static object ToResponse(Routine routine) => new
