@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, json, request, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
+import { ApiError, json, request, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
 
-type Page = 'today' | 'routines' | 'progress' | 'history'
+type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 type Account = { email: string }
 
 const dateLabel = (value: string) => new Intl.DateTimeFormat(undefined, {
@@ -17,21 +17,25 @@ function App() {
   const [active, setActive] = useState<WorkoutSession | null>(null)
   const [history, setHistory] = useState<WorkoutSession[]>([])
   const [stats, setStats] = useState<Stats>({ workouts: 0, weeklySets: 0, bests: [] })
+  const [exerciseLibrary, setExerciseLibrary] = useState<ExerciseDefinition[]>([])
   const [editing, setEditing] = useState<Routine | 'new' | null>(null)
+  const [editingExercise, setEditingExercise] = useState<ExerciseDefinition | 'new' | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   async function loadData() {
-    const [nextRoutines, nextActive, nextHistory, nextStats] = await Promise.all([
+    const [nextRoutines, nextActive, nextHistory, nextStats, nextExercises] = await Promise.all([
       request<Routine[]>('/api/routines'),
       request<WorkoutSession | null>('/api/sessions/active'),
       request<WorkoutSession[]>('/api/sessions/history'),
       request<Stats>('/api/stats'),
+      request<ExerciseDefinition[]>('/api/exercises'),
     ])
     setRoutines(nextRoutines)
     setActive(nextActive)
     setHistory(nextHistory)
     setStats(nextStats)
+    setExerciseLibrary(nextExercises)
   }
 
   useEffect(() => {
@@ -65,6 +69,7 @@ function App() {
       setActive(null)
       setRoutines([])
       setHistory([])
+      setExerciseLibrary([])
     })
   }
 
@@ -77,6 +82,25 @@ function App() {
       await loadData()
       setEditing(null)
       setPage('routines')
+    })
+  }
+
+  async function saveExercise(input: { name: string; kind: ExerciseKind }) {
+    await run(async () => {
+      const current = editingExercise
+      await request<ExerciseDefinition>(current && current !== 'new' ? `/api/exercises/${current.id}` : '/api/exercises', {
+        method: current && current !== 'new' ? 'PUT' : 'POST', body: json(input),
+      })
+      await loadData()
+      setEditingExercise(null)
+    })
+  }
+
+  async function deleteExercise(exercise: ExerciseDefinition) {
+    if (!window.confirm(`Remove “${exercise.name}” from your exercise library? Routine and history names will be kept.`)) return
+    await run(async () => {
+      await request<null>(`/api/exercises/${exercise.id}`, { method: 'DELETE' })
+      await loadData()
     })
   }
 
@@ -134,8 +158,8 @@ function App() {
   if (startupError) return <div className="flex min-h-screen items-center justify-center p-6"><div className="card max-w-md p-8 text-center"><h1 className="text-2xl font-black">Could not connect to LIFT</h1><p className="mt-3 text-sm text-muted">Check that the API and database are running, then try again.</p><button className="button-primary mt-6" onClick={() => window.location.reload()}>Try again</button></div></div>
   if (!account) return <AuthScreen onSignedIn={signedIn} />
 
-  const navItems = [['today', 'Today'], ['routines', 'Routines'], ['progress', 'Progress'], ['history', 'History']] as const
-  const pageTitle = page === 'today' ? 'Train with intention.' : page === 'routines' ? 'Your routines.' : page === 'progress' ? 'See your progress.' : 'Training history.'
+  const navItems = [['today', 'Today'], ['routines', 'Routines'], ['exercises', 'Exercises'], ['progress', 'Progress'], ['history', 'History']] as const
+  const pageTitle = page === 'today' ? 'Train with intention.' : page === 'routines' ? 'Your routines.' : page === 'exercises' ? 'Your exercise library.' : page === 'progress' ? 'See your progress.' : 'Training history.'
 
   return (
     <div className="app-shell">
@@ -180,6 +204,8 @@ function App() {
           onFinish={finishWorkout} onDiscard={discardWorkout} />}
         {page === 'routines' && <RoutinesPage routines={routines} busy={busy} hasActive={Boolean(active)} onStart={startWorkout}
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
+        {page === 'exercises' && <ExercisesPage exercises={exerciseLibrary} onNew={() => setEditingExercise('new')}
+          onEdit={setEditingExercise} onDelete={deleteExercise} />}
         {page === 'progress' && <ProgressPage stats={stats} />}
         {page === 'history' && <HistoryPage history={history} />}
         </main>
@@ -192,7 +218,9 @@ function App() {
       </nav>
 
       {editing && <RoutineEditor routine={editing === 'new' ? null : editing} busy={busy}
-        onClose={() => setEditing(null)} onSave={saveRoutine} />}
+        library={exerciseLibrary} onClose={() => setEditing(null)} onSave={saveRoutine} />}
+      {editingExercise && <ExerciseEditor exercise={editingExercise === 'new' ? null : editingExercise} busy={busy}
+        onClose={() => setEditingExercise(null)} onSave={saveExercise} />}
     </div>
   )
 }
@@ -369,12 +397,48 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
   </div>
 }
 
-function RoutineEditor({ routine, busy, onClose, onSave }: { routine: Routine | null; busy: boolean; onClose: () => void; onSave: (input: RoutineInput) => void }) {
+function ExercisesPage({ exercises, onNew, onEdit, onDelete }: {
+  exercises: ExerciseDefinition[]; onNew: () => void; onEdit: (exercise: ExerciseDefinition) => void; onDelete: (exercise: ExerciseDefinition) => void
+}) {
+  if (!exercises.length) return <EmptyState title="Build your exercise library" body="Save movements here so routines can reuse them and your training history can follow each one." action="Add an exercise" onAction={onNew} />
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{exercises.length} saved {exercises.length === 1 ? 'exercise' : 'exercises'}</p><button className="button-primary" onClick={onNew}>+ Add exercise</button></div>
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{exercises.map(exercise => <article className="card flex items-center justify-between gap-3 p-5" key={exercise.id}>
+      <div className="min-w-0"><h2 className="truncate font-bold">{exercise.name}</h2><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.kind === 'strength' ? 'Loaded strength' : exercise.kind}</p></div>
+      <div className="flex shrink-0 gap-2"><button className="button-quiet !px-3 !py-2" onClick={() => onEdit(exercise)}>Edit</button><button className="text-sm font-semibold text-muted hover:text-red-700" aria-label={`Remove ${exercise.name}`} onClick={() => onDelete(exercise)}>Remove</button></div>
+    </article>)}</div>
+  </div>
+}
+
+function ExerciseEditor({ exercise, busy, onClose, onSave }: {
+  exercise: ExerciseDefinition | null; busy: boolean; onClose: () => void; onSave: (input: { name: string; kind: ExerciseKind }) => void
+}) {
+  const [name, setName] = useState(exercise?.name ?? '')
+  const [kind, setKind] = useState<ExerciseKind>(exercise?.kind ?? 'strength')
+  function submit(event: FormEvent) { event.preventDefault(); onSave({ name, kind }) }
+  return <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink/60 p-4 py-8 md:items-center" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl md:p-8">
+      <div className="flex items-start justify-between gap-4"><div><p className="eyebrow mb-2">Exercise library</p><h2 className="text-2xl font-black">{exercise ? 'Edit exercise' : 'Add an exercise'}</h2></div><button type="button" onClick={onClose} className="text-2xl leading-none text-muted hover:text-ink" aria-label="Close">×</button></div>
+      <label className="mt-7 block text-sm font-bold">Exercise name<input className="field mt-2" value={name} onChange={event => setName(event.target.value)} maxLength={100} required autoFocus placeholder="e.g. Incline chest press" /></label>
+      <label className="mt-5 block text-sm font-bold">Exercise type<select className="field mt-2" value={kind} onChange={event => setKind(event.target.value as ExerciseKind)}><option value="strength">Loaded strength</option><option value="bodyweight">Bodyweight</option><option value="cardio">Cardio</option></select></label>
+      <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Cancel</button><button className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save exercise'}</button></div>
+    </form>
+  </div>
+}
+
+function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: Routine | null; busy: boolean; library: ExerciseDefinition[]; onClose: () => void; onSave: (input: RoutineInput) => void }) {
   const [name, setName] = useState(routine?.name ?? '')
-  const [exercises, setExercises] = useState<RoutineInput['exercises']>(routine?.exercises.map(x => ({ name: x.name, sets: x.sets, targetReps: x.targetReps })) ?? [{ name: '', sets: 3, targetReps: 8 }])
+  const [exercises, setExercises] = useState<RoutineInput['exercises']>(routine?.exercises.map(x => ({ name: x.name, exerciseId: x.exerciseId, sets: x.sets, targetReps: x.targetReps })) ?? [{ name: '', exerciseId: null, sets: 3, targetReps: 8 }])
 
   function change(index: number, field: 'name' | 'sets' | 'targetReps', value: string) {
-    setExercises(current => current.map((item, i) => i === index ? { ...item, [field]: field === 'name' ? value : Number(value) } : item))
+    setExercises(current => current.map((item, i) => {
+      if (i !== index) return item
+      if (field === 'name') {
+        const match = library.find(entry => entry.name.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase())
+        return { ...item, name: value, exerciseId: match?.id ?? null }
+      }
+      return { ...item, [field]: Number(value) }
+    }))
   }
 
   function submit(event: FormEvent) {
@@ -389,11 +453,12 @@ function RoutineEditor({ routine, busy, onClose, onSave }: { routine: Routine | 
       <div className="mt-7 flex items-center justify-between"><h3 className="font-black">Exercises</h3><span className="text-xs text-muted">Sets and rep targets</span></div>
       <div className="mt-3 space-y-3">{exercises.map((exercise, index) => <div key={index} className="rounded-xl border border-line bg-paper p-4">
         <div className="mb-3 flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-muted">Exercise {index + 1}</span><button type="button" disabled={exercises.length === 1} className="text-xs font-bold text-muted hover:text-red-700" onClick={() => setExercises(current => current.filter((_, i) => i !== index))}>Remove</button></div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]"><label className="text-xs font-semibold text-muted">Name<input className="field mt-1" value={exercise.name} onChange={e => change(index, 'name', e.target.value)} maxLength={100} required placeholder="e.g. Bench press" /></label>
+        <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]"><label className="text-xs font-semibold text-muted">Name<input className="field mt-1" list="exercise-library-options" value={exercise.name} onChange={e => change(index, 'name', e.target.value)} maxLength={100} required placeholder="e.g. Bench press" /></label>
           <label className="text-xs font-semibold text-muted">Sets<input className="field mt-1" type="number" min="1" max="10" value={exercise.sets} onChange={e => change(index, 'sets', e.target.value)} required /></label>
           <label className="text-xs font-semibold text-muted">Reps<input className="field mt-1" type="number" min="1" max="100" value={exercise.targetReps} onChange={e => change(index, 'targetReps', e.target.value)} required /></label></div>
       </div>)}</div>
-      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', sets: 3, targetReps: 8 }])}>+ Add exercise</button>
+      <datalist id="exercise-library-options">{library.map(item => <option key={item.id} value={item.name}>{item.kind}</option>)}</datalist>
+      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', exerciseId: null, sets: 3, targetReps: 8 }])}>+ Add exercise</button>
       <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Cancel</button><button className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save routine'}</button></div>
     </form>
   </div>

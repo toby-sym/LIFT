@@ -18,6 +18,65 @@ public static class LiftEndpoints
             return Results.NoContent();
         });
 
+        api.MapGet("/exercises", async (LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var exercises = await db.ExerciseLibrary.AsNoTracking()
+                .Where(x => x.OwnerId == Owner(user))
+                .OrderBy(x => x.Name)
+                .ToListAsync();
+            return Results.Ok(exercises.Select(ToResponse));
+        });
+
+        api.MapPost("/exercises", async (ExerciseLibraryInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var errors = Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var ownerId = Owner(user);
+            var normalizedName = Normalize(input.Name);
+            if (await db.ExerciseLibrary.AnyAsync(x => x.OwnerId == ownerId && x.NormalizedName == normalizedName))
+                return Results.Conflict(new { message = "An exercise with that name already exists." });
+
+            var exercise = new ExerciseDefinition
+            {
+                OwnerId = ownerId,
+                Name = input.Name.Trim(),
+                NormalizedName = normalizedName,
+                Kind = input.Kind
+            };
+            db.ExerciseLibrary.Add(exercise);
+            await db.SaveChangesAsync();
+            return Results.Created($"/api/exercises/{exercise.Id}", ToResponse(exercise));
+        });
+
+        api.MapPut("/exercises/{id:guid}", async (Guid id, ExerciseLibraryInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var errors = Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var ownerId = Owner(user);
+            var exercise = await db.ExerciseLibrary.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == ownerId);
+            if (exercise is null) return Results.NotFound();
+            var normalizedName = Normalize(input.Name);
+            if (await db.ExerciseLibrary.AnyAsync(x => x.OwnerId == ownerId && x.Id != id && x.NormalizedName == normalizedName))
+                return Results.Conflict(new { message = "An exercise with that name already exists." });
+
+            exercise.Name = input.Name.Trim();
+            exercise.NormalizedName = normalizedName;
+            exercise.Kind = input.Kind;
+            await db.RoutineExercises.Where(x => x.ExerciseDefinitionId == id)
+                .ExecuteUpdateAsync(update => update.SetProperty(x => x.Name, exercise.Name));
+            await db.SaveChangesAsync();
+            return Results.Ok(ToResponse(exercise));
+        });
+
+        api.MapDelete("/exercises/{id:guid}", async (Guid id, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var exercise = await db.ExerciseLibrary.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
+            if (exercise is null) return Results.NotFound();
+            db.ExerciseLibrary.Remove(exercise);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
         api.MapGet("/routines", async (LiftDbContext db, ClaimsPrincipal user) =>
         {
             var routines = await db.Routines.AsNoTracking()
@@ -32,12 +91,14 @@ public static class LiftEndpoints
         {
             var errors = Validate(input);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
+            if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
 
             var routine = new Routine
             {
                 OwnerId = Owner(user),
                 Name = input.Name.Trim(),
-                Exercises = BuildExercises(input.Exercises)
+                Exercises = await BuildExercisesAsync(input.Exercises, db, Owner(user))
             };
             db.Routines.Add(routine);
             await db.SaveChangesAsync();
@@ -48,6 +109,8 @@ public static class LiftEndpoints
         {
             var errors = Validate(input);
             if (errors.Count > 0) return Results.ValidationProblem(errors);
+            if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
 
             var routine = await db.Routines.Include(x => x.Exercises)
                 .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
@@ -55,7 +118,7 @@ public static class LiftEndpoints
 
             routine.Name = input.Name.Trim();
             db.RoutineExercises.RemoveRange(routine.Exercises);
-            var replacements = BuildExercises(input.Exercises);
+            var replacements = await BuildExercisesAsync(input.Exercises, db, Owner(user));
             foreach (var exercise in replacements) exercise.RoutineId = routine.Id;
             db.RoutineExercises.AddRange(replacements);
             routine.Exercises = replacements;
@@ -110,6 +173,7 @@ public static class LiftEndpoints
                 {
                     Order = order,
                     Name = exercise.Name,
+                    ExerciseDefinitionId = exercise.ExerciseDefinitionId,
                     Sets = Enumerable.Range(0, exercise.Sets).Select(setOrder => new WorkoutSet
                     {
                         Order = setOrder,
@@ -187,9 +251,9 @@ public static class LiftEndpoints
                 .Sum(x => x.Exercises.Sum(e => e.Sets.Count(s => s.Completed)));
             var bests = sessions.SelectMany(x => x.Exercises)
                 .SelectMany(e => e.Sets.Where(s => s.Completed && s.WeightKg.HasValue)
-                    .Select(s => new { e.Name, s.WeightKg }))
-                .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(g => new { exercise = g.First().Name, weightKg = g.Max(x => x.WeightKg) })
+                    .Select(s => new { e.ExerciseDefinitionId, e.Name, s.WeightKg }))
+                .GroupBy(x => x.ExerciseDefinitionId?.ToString() ?? Normalize(x.Name), StringComparer.Ordinal)
+                .Select(g => new { exerciseId = g.First().ExerciseDefinitionId, exercise = g.First().Name, weightKg = g.Max(x => x.WeightKg) })
                 .OrderBy(x => x.exercise)
                 .ToList();
             return Results.Ok(new { workouts = sessions.Count, weeklySets, bests });
@@ -201,14 +265,51 @@ public static class LiftEndpoints
     private static IQueryable<WorkoutSession> SessionQuery(LiftDbContext db) =>
         db.WorkoutSessions.Include(x => x.Exercises).ThenInclude(x => x.Sets).AsSplitQuery();
 
-    private static List<RoutineExercise> BuildExercises(List<ExerciseInput> exercises) =>
-        exercises.Select((exercise, order) => new RoutineExercise
+    private static async Task<List<RoutineExercise>> BuildExercisesAsync(List<ExerciseInput> exercises, LiftDbContext db, string ownerId)
+    {
+        var result = new List<RoutineExercise>();
+        for (var order = 0; order < exercises.Count; order++)
         {
-            Order = order,
-            Name = exercise.Name.Trim(),
-            Sets = exercise.Sets,
-            TargetReps = exercise.TargetReps
-        }).ToList();
+            var input = exercises[order];
+            var name = input.Name.Trim();
+            var normalizedName = Normalize(name);
+            var libraryExercise = input.ExerciseId is Guid exerciseId
+                ? await db.ExerciseLibrary.FirstOrDefaultAsync(x => x.Id == exerciseId && x.OwnerId == ownerId)
+                : db.ExerciseLibrary.Local.FirstOrDefault(x => x.OwnerId == ownerId && x.NormalizedName == normalizedName);
+            libraryExercise ??= db.ExerciseLibrary.Local.FirstOrDefault(x => x.OwnerId == ownerId && x.NormalizedName == normalizedName);
+            libraryExercise ??= await db.ExerciseLibrary.FirstOrDefaultAsync(x =>
+                x.OwnerId == ownerId && x.NormalizedName == normalizedName);
+            if (libraryExercise is null)
+            {
+                libraryExercise = new ExerciseDefinition
+                {
+                    OwnerId = ownerId,
+                    Name = name,
+                    NormalizedName = normalizedName,
+                    Kind = "strength"
+                };
+                db.ExerciseLibrary.Add(libraryExercise);
+            }
+            result.Add(new RoutineExercise
+            {
+                Order = order,
+                Name = name,
+                ExerciseDefinitionId = libraryExercise.Id,
+                Sets = input.Sets,
+                TargetReps = input.TargetReps
+            });
+        }
+        return result;
+    }
+
+    private static async Task<bool> HasUnownedExerciseAsync(List<ExerciseInput> exercises, LiftDbContext db, string ownerId)
+    {
+        var ids = exercises.Where(x => x.ExerciseId.HasValue).Select(x => x.ExerciseId!.Value).Distinct().ToList();
+        if (ids.Count == 0) return false;
+        return await db.ExerciseLibrary.CountAsync(x => x.OwnerId == ownerId && ids.Contains(x.Id)) != ids.Count;
+    }
+
+    private static string Normalize(string value) => value.Trim().ToUpperInvariant();
 
     private static Dictionary<string, string[]> Validate(RoutineInput input)
     {
@@ -220,6 +321,16 @@ public static class LiftEndpoints
         else if (input.Exercises.Any(x => x is null || string.IsNullOrWhiteSpace(x.Name) ||
                      x.Name.Trim().Length > 100 || x.Sets is < 1 or > 10 || x.TargetReps is < 1 or > 100))
             errors["exercises"] = ["Each exercise needs a name, 1–10 sets and a target of 1–100 reps."];
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> Validate(ExerciseLibraryInput input)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Trim().Length > 100)
+            errors["name"] = ["Name must be 1 to 100 characters."];
+        if (input.Kind is not ("strength" or "bodyweight" or "cardio"))
+            errors["kind"] = ["Choose strength, bodyweight, or cardio."];
         return errors;
     }
 
@@ -242,7 +353,7 @@ public static class LiftEndpoints
         routine.CreatedAt,
         exercises = routine.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, x.Sets, x.TargetReps
+            x.Id, x.Name, exerciseId = x.ExerciseDefinitionId, x.Sets, x.TargetReps
         })
     };
 
@@ -256,16 +367,25 @@ public static class LiftEndpoints
         session.Notes,
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name,
+            x.Id, x.Name, exerciseId = x.ExerciseDefinitionId,
             sets = x.Sets.OrderBy(s => s.Order).Select(s => new
             {
                 s.Id, s.Order, s.TargetReps, s.WeightKg, s.Reps, s.Completed
             })
         })
     };
+
+    private static object ToResponse(ExerciseDefinition exercise) => new
+    {
+        exercise.Id,
+        exercise.Name,
+        exercise.Kind,
+        exercise.CreatedAt
+    };
 }
 
-public sealed record ExerciseInput(string Name, int Sets, int TargetReps);
+public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null);
+public sealed record ExerciseLibraryInput(string Name, string Kind);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);
 public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed);
