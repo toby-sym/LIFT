@@ -149,6 +149,7 @@ public static class LiftEndpoints
             var errors = Validate(input);
             foreach (var error in ValidateExerciseOptions(input)) errors[error.Key] = error.Value;
             foreach (var error in ValidateCardioTargets(input)) errors[error.Key] = error.Value;
+            foreach (var error in ValidateRoutineGroups(input)) errors[error.Key] = error.Value;
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
@@ -170,6 +171,7 @@ public static class LiftEndpoints
             var errors = Validate(input);
             foreach (var error in ValidateExerciseOptions(input)) errors[error.Key] = error.Value;
             foreach (var error in ValidateCardioTargets(input)) errors[error.Key] = error.Value;
+            foreach (var error in ValidateRoutineGroups(input)) errors[error.Key] = error.Value;
             if (errors.Count > 0) return Results.ValidationProblem(errors);
             if (await HasUnownedExerciseAsync(input.Exercises, db, Owner(user)))
                 return Results.ValidationProblem(new Dictionary<string, string[]> { ["exercises"] = ["Choose exercises from your own library."] });
@@ -247,6 +249,7 @@ public static class LiftEndpoints
                 {
                     Order = order,
                     RoutineSlotId = exercise.Id,
+                    GroupId = exercise.GroupId,
                     SlotName = exercise.Name,
                     ExerciseDefinitionId = exercise.Options.Count == 0 ? exercise.ExerciseDefinitionId : null,
                     Kind = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Kind ?? "strength" : "strength",
@@ -506,6 +509,7 @@ public static class LiftEndpoints
             slot.TargetResistanceLevel = input.TargetResistanceLevel;
             slot.TargetRpm = input.TargetRpm;
             slot.TargetDurationSeconds = input.TargetDurationSeconds;
+            slot.GroupId = input.GroupId;
             var priorOptions = slot.Options.OrderBy(x => x.Order).ToList();
             var nextOptions = resolved.Skip(1).Select((definition, optionOrder) =>
             {
@@ -567,6 +571,15 @@ public static class LiftEndpoints
             if (slot.TargetDurationSeconds is < 1 or > 14400)
                 return new Dictionary<string, string[]> { ["exercises"] = ["Target duration must be between 1 second and 4 hours."] };
         }
+        return [];
+    }
+
+    private static Dictionary<string, string[]> ValidateRoutineGroups(RoutineInput input)
+    {
+        if (input.Exercises is null) return [];
+        var groups = input.Exercises.Where(x => x?.GroupId is not null).GroupBy(x => x!.GroupId!.Value);
+        if (groups.Any(group => group.Count() is < 2 or > 8))
+            return new Dictionary<string, string[]> { ["exercises"] = ["Each superset, tri-set or giant set must group 2 to 8 exercise slots."] };
         return [];
     }
 
@@ -746,7 +759,8 @@ public static class LiftEndpoints
         routine.CreatedAt,
         exercises = routine.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, exerciseId = x.ExerciseDefinitionId, x.Sets, x.TargetReps,
+            x.Id, x.Name, exerciseId = x.ExerciseDefinitionId, x.GroupId,
+            groupType = GroupType(x.GroupId, routine.Exercises.Count(member => member.GroupId == x.GroupId)), x.Sets, x.TargetReps,
             section = x.Section,
             targetTempo = x.TargetTempo,
             x.TargetHeartRateMin, x.TargetHeartRateMax, targetResistanceLevel = x.TargetResistanceLevel,
@@ -777,7 +791,9 @@ public static class LiftEndpoints
         metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind, oneRepMaxKg = x.OneRepMaxKg,
+            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, x.GroupId,
+            groupType = GroupType(x.GroupId, session.Exercises.Count(member => member.GroupId == x.GroupId)),
+            kind = x.Kind, oneRepMaxKg = x.OneRepMaxKg,
             section = x.Section, targetTempo = x.TargetTempo,
             x.TargetHeartRateMin, x.TargetHeartRateMax, targetResistanceLevel = x.TargetResistanceLevel, targetRpm = x.TargetRpm,
             options = x.Options.OrderBy(o => o.Order).Select(o => new
@@ -812,9 +828,17 @@ public static class LiftEndpoints
         entry.MeasuredOn,
         entry.CreatedAt
     };
+
+    private static string? GroupType(Guid? groupId, int count) => groupId is null ? null : count switch
+    {
+        2 => "superset",
+        3 => "tri-set",
+        > 3 => "giant set",
+        _ => "group"
+    };
 }
 
-public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null, int? TargetHeartRateMin = null, int? TargetHeartRateMax = null, decimal? TargetResistanceLevel = null, decimal? TargetRpm = null, int? TargetDurationSeconds = null);
+public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null, int? TargetHeartRateMin = null, int? TargetHeartRateMax = null, decimal? TargetResistanceLevel = null, decimal? TargetRpm = null, int? TargetDurationSeconds = null, Guid? GroupId = null);
 public sealed record ExerciseOptionInput(string Name, Guid? ExerciseId = null);
 public sealed record ExerciseLibraryInput(string Name, string Kind, decimal? OneRepMaxKg = null);
 public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);

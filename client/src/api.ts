@@ -17,6 +17,8 @@ export type BodyweightEntry = {
 
 export type RoutineExercise = {
   id: string
+  groupId: string | null
+  groupType: 'superset' | 'tri-set' | 'giant set' | null
   name: string
   exerciseId: string | null
   options: { exerciseId: string | null; name: string; kind: ExerciseKind }[]
@@ -85,6 +87,8 @@ export type WorkoutSession = {
   exercises: {
     id: string
     name: string
+    groupId: string | null
+    groupType: 'superset' | 'tri-set' | 'giant set' | null
     slotName: string
     exerciseId: string | null
     kind: ExerciseKind
@@ -110,6 +114,7 @@ export type RoutineInput = {
   name: string
   exercises: {
     id?: string | null
+    groupId?: string | null
     name: string
     exerciseId?: string | null
     options: { name: string; exerciseId?: string | null }[]

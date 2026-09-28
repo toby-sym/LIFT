@@ -512,6 +512,63 @@ public sealed class WorkoutFlowTests
         Assert.Equal(JsonValueKind.Null, saved.GetProperty("metrics").GetProperty("tonnageKg").ValueKind);
     }
 
+    [Fact]
+    public async Task Routines_group_two_three_and_four_exercises_into_supersets_trisets_and_giant_sets()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var client = factory.CreateClient();
+        await RegisterAndSignIn(client, "exercise-groups@example.com");
+
+        var supersetId = Guid.NewGuid();
+        var triSetId = Guid.NewGuid();
+        var giantSetId = Guid.NewGuid();
+        var invalidGroupId = Guid.NewGuid();
+        var invalid = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Invalid single group",
+            exercises = new[]
+            {
+                new { name = "Lonely exercise", sets = 3, targetReps = 8, groupId = invalidGroupId }
+            }
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var create = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Grouped day",
+            exercises = new[]
+            {
+                new { name = "Bench press", sets = 3, targetReps = 8, groupId = supersetId },
+                new { name = "Row", sets = 3, targetReps = 10, groupId = supersetId },
+                new { name = "Lateral raise", sets = 3, targetReps = 12, groupId = triSetId },
+                new { name = "Face pull", sets = 3, targetReps = 12, groupId = triSetId },
+                new { name = "Curl", sets = 3, targetReps = 10, groupId = triSetId },
+                new { name = "Leg press", sets = 3, targetReps = 10, groupId = giantSetId },
+                new { name = "Hamstring curl", sets = 3, targetReps = 12, groupId = giantSetId },
+                new { name = "Calf raise", sets = 3, targetReps = 15, groupId = giantSetId },
+                new { name = "Plank", sets = 3, targetReps = 1, groupId = giantSetId }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var routine = await create.Content.ReadFromJsonAsync<JsonElement>();
+        var exercises = routine.GetProperty("exercises");
+        Assert.Equal("superset", exercises[0].GetProperty("groupType").GetString());
+        Assert.Equal("superset", exercises[1].GetProperty("groupType").GetString());
+        Assert.Equal("tri-set", exercises[2].GetProperty("groupType").GetString());
+        Assert.Equal("tri-set", exercises[4].GetProperty("groupType").GetString());
+        Assert.Equal("giant set", exercises[5].GetProperty("groupType").GetString());
+        Assert.Equal("giant set", exercises[8].GetProperty("groupType").GetString());
+
+        var start = await client.PostAsJsonAsync("/api/sessions", new { routineId = routine.GetProperty("id").GetString() });
+        Assert.Equal(HttpStatusCode.Created, start.StatusCode);
+        var session = await start.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(exercises[0].GetProperty("groupId").GetString(), session.GetProperty("exercises")[0].GetProperty("groupId").GetString());
+        Assert.Equal("superset", session.GetProperty("exercises")[1].GetProperty("groupType").GetString());
+        Assert.Equal("tri-set", session.GetProperty("exercises")[2].GetProperty("groupType").GetString());
+        Assert.Equal("giant set", session.GetProperty("exercises")[8].GetProperty("groupType").GetString());
+    }
+
     private static async Task RegisterAndSignIn(HttpClient client, string email)
     {
         var password = "StrongPass1!";
