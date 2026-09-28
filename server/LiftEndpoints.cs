@@ -860,7 +860,8 @@ public static class LiftEndpoints
         metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, x.GroupId,
+            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId,
+            x.Order, routineSlotId = x.RoutineSlotId, x.GroupId,
             groupType = GroupType(x.GroupId, session.Exercises.Count(member => member.GroupId == x.GroupId)),
             kind = x.Kind, oneRepMaxKg = x.OneRepMaxKg,
             section = x.Section, targetTempo = x.TargetTempo,

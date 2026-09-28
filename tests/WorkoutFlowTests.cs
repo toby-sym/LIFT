@@ -104,6 +104,8 @@ public sealed class WorkoutFlowTests
         var history = await historyResponse.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Upper A", history[0].GetProperty("name").GetString());
         Assert.Equal("Bench press", history[0].GetProperty("exercises")[0].GetProperty("name").GetString());
+        Assert.Equal(0, history[0].GetProperty("exercises")[0].GetProperty("order").GetInt32());
+        Assert.Null(history[0].GetProperty("exercises")[0].GetProperty("routineSlotId").GetString());
         Assert.Equal("Good session", history[0].GetProperty("notes").GetString());
         var stats = await alice.GetFromJsonAsync<JsonElement>("/api/stats");
         Assert.Equal(1, stats.GetProperty("workouts").GetInt32());
