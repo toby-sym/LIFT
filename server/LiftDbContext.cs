@@ -140,6 +140,7 @@ public sealed class RoutineExercise
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RoutineId { get; set; }
     public Guid? ExerciseDefinitionId { get; set; }
+    public Guid? GroupId { get; set; }
     public int Order { get; set; }
     public required string Name { get; set; }
     public int Sets { get; set; }
@@ -185,6 +186,7 @@ public sealed class WorkoutExercise
     public Guid SessionId { get; set; }
     public Guid? RoutineSlotId { get; set; }
     public Guid? ExerciseDefinitionId { get; set; }
+    public Guid? GroupId { get; set; }
     public int Order { get; set; }
     public string? SlotName { get; set; }
     public required string Name { get; set; }
