@@ -108,6 +108,28 @@ export type Stats = {
   workouts: number
   weeklySets: number
   bests: { exerciseId: string | null; exercise: string; weightKg: number }[]
+  personalRecords: {
+    exerciseId: string | null
+    exercise: string
+    heaviestSetKg: number | null
+    mostReps: number | null
+    mostRepsAtKg: number | null
+    estimatedOneRmKg: number | null
+  }[]
+  sessionTonnageRecordKg: number | null
+}
+
+export type ExerciseProgress = {
+  exerciseId: string
+  name: string
+  points: {
+    date: string
+    bestLoadKg: number | null
+    totalReps: number
+    estimatedOneRmKg: number | null
+    volumeKg: number | null
+    volumeComplete: boolean
+  }[]
 }
 
 export type RoutineInput = {
