@@ -90,6 +90,8 @@ export type WorkoutSession = {
     groupId: string | null
     groupType: 'superset' | 'tri-set' | 'giant set' | null
     slotName: string
+    order: number
+    routineSlotId: string | null
     exerciseId: string | null
     kind: ExerciseKind
     oneRepMaxKg: number | null

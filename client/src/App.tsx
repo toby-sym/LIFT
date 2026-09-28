@@ -260,7 +260,7 @@ function App() {
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
         {page === 'exercises' && <ExercisesPage exercises={exerciseLibrary} onNew={() => setEditingExercise('new')}
           onEdit={setEditingExercise} onDelete={deleteExercise} />}
-        {page === 'progress' && <ProgressPage stats={stats} entries={bodyweightEntries} exercises={exerciseLibrary} onSave={saveBodyweight} onDelete={deleteBodyweight} />}
+        {page === 'progress' && <ProgressPage stats={stats} entries={bodyweightEntries} exercises={exerciseLibrary} history={history} onSave={saveBodyweight} onDelete={deleteBodyweight} />}
         {page === 'history' && <HistoryPage history={history} />}
         </main>
       </div>
@@ -513,8 +513,8 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   </div>)}</div>
 }
 
-function ProgressPage({ stats, entries, exercises, onSave, onDelete }: {
-  stats: Stats; entries: BodyweightEntry[]; exercises: ExerciseDefinition[]
+function ProgressPage({ stats, entries, exercises, history, onSave, onDelete }: {
+  stats: Stats; entries: BodyweightEntry[]; exercises: ExerciseDefinition[]; history: WorkoutSession[]
   onSave: (id: string | null, value: { weightKg: number; measuredOn: string }) => Promise<void>
   onDelete: (entry: BodyweightEntry) => void
 }) {
@@ -607,6 +607,7 @@ function ProgressPage({ stats, entries, exercises, onSave, onDelete }: {
       </div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your records will appear after you finish a workout with logged sets.</p>}
     </div>
     <ExerciseProgressPanel exercises={exercises} />
+    <SessionComparisonPanel history={history} />
   </div>
 }
 
@@ -671,6 +672,89 @@ function ExerciseProgressPanel({ exercises }: { exercises: ExerciseDefinition[] 
         <div className="flex justify-between px-2 text-xs text-muted"><span>{dateLabel(chartPoints[0].point.date)}</span><span>{dateLabel(chartPoints[chartPoints.length - 1].point.date)}</span></div>
         <p className="mt-2 px-2 text-xs text-muted">{chartPoints.length} completed workout{chartPoints.length === 1 ? '' : 's'} with this measure.</p>
       </div> : <div className="mt-5 rounded-xl bg-paper px-5 py-10 text-center text-sm text-muted">No {activeMetric.label.toLowerCase()} data for this exercise yet.</div>}
+  </section>
+}
+
+function SessionComparisonPanel({ history }: { history: WorkoutSession[] }) {
+  const comparable = history.filter(session => session.routineId != null)
+  let initialLeft = comparable[0]?.id ?? ''
+  let initialRight = ''
+  for (let i = 0; i < comparable.length && !initialRight; i++) {
+    const match = comparable.slice(i + 1).find(session => session.routineId === comparable[i].routineId)
+    if (match) { initialLeft = comparable[i].id; initialRight = match.id }
+  }
+  const [leftId, setLeftId] = useState(initialLeft)
+  const [rightId, setRightId] = useState(initialRight)
+  const left = comparable.find(session => session.id === leftId)
+  const rightChoices = comparable.filter(session => session.routineId === left?.routineId && session.id !== leftId)
+  const right = rightChoices.find(session => session.id === rightId)
+
+  function summary(exercise: WorkoutSession['exercises'][number] | undefined) {
+    if (!exercise) return null
+    const sets = exercise.sets.filter(set => set.completed)
+    const loads = sets.map(set => exercise.kind === 'cardio' ? null : exercise.kind === 'bodyweight'
+      ? set.bodyMassKg == null ? null : set.bodyMassKg + (set.weightKg ?? 0)
+      : set.weightKg).filter((load): load is number => load != null)
+    const completeVolume = sets.length > 0 && exercise.kind !== 'cardio' && sets.every(set => set.reps != null && (exercise.kind === 'bodyweight' ? set.bodyMassKg != null : set.weightKg != null))
+    const volumeKg = completeVolume ? sets.reduce((sum, set) => sum + ((exercise.kind === 'bodyweight' ? (set.bodyMassKg ?? 0) + (set.weightKg ?? 0) : set.weightKg ?? 0) * (set.reps ?? 0)), 0) : null
+    const estimates = sets.map(set => set.estimatedOneRmKg).filter((value): value is number => value != null)
+    return {
+      setCount: sets.length,
+      totalReps: sets.reduce((sum, set) => sum + (set.reps ?? 0), 0),
+      bestLoadKg: loads.length ? Math.max(...loads) : null,
+      estimatedOneRmKg: estimates.length ? Math.max(...estimates) : null,
+      volumeKg,
+      durationSeconds: sets.reduce((sum, set) => sum + (set.durationSeconds ?? 0), 0),
+    }
+  }
+
+  const comparisonRows = left && right ? left.exercises.map((exercise, index) => {
+    const match = right.exercises.find(other => exercise.routineSlotId && exercise.routineSlotId === other.routineSlotId)
+      ?? right.exercises.find(other => other.order === exercise.order)
+    return { key: exercise.routineSlotId ?? `${exercise.order}:${exercise.slotName}`, left: exercise, right: match, index }
+  }) : []
+
+  function display(value: number | null | undefined, unit: string) {
+    return value == null ? '—' : `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unit}`
+  }
+  function change(a: number | null, b: number | null, unit: string) {
+    if (a == null || b == null) return '—'
+    const delta = b - a
+    return delta === 0 ? 'No change' : `${delta > 0 ? '+' : ''}${delta.toLocaleString(undefined, { maximumFractionDigits: 1 })} ${unit}`
+  }
+
+  return <section className="card p-5 md:p-6">
+    <div><p className="eyebrow">Compare sessions</p><h2 className="mt-2 text-xl font-black">Repeat the same routine and compare</h2><p className="mt-2 text-sm text-muted">We line up exercise slots and show the actual movement choice for each workout.</p></div>
+    {comparable.length < 2 ? <p className="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">Finish the same routine twice to compare its exercise slots.</p> : <>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <label className="text-xs font-semibold text-muted">Session A<select className="field mt-1" value={leftId} onChange={event => {
+          const nextLeftId = event.target.value
+          const nextLeft = comparable.find(session => session.id === nextLeftId)
+          const nextRight = comparable.find(session => session.id !== nextLeftId && session.routineId === nextLeft?.routineId)
+          setLeftId(nextLeftId)
+          setRightId(nextRight?.id ?? '')
+        }}>{comparable.map(session => <option value={session.id} key={session.id}>{session.name} · {dateLabel(session.completedAt ?? session.startedAt)}</option>)}</select></label>
+        <label className="text-xs font-semibold text-muted">Session B<select className="field mt-1" value={rightId} onChange={event => setRightId(event.target.value)} disabled={!rightChoices.length}>{rightChoices.map(session => <option value={session.id} key={session.id}>{session.name} · {dateLabel(session.completedAt ?? session.startedAt)}</option>)}</select></label>
+      </div>
+      {left && right ? <>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">{[left, right].map(session => <div className="rounded-xl bg-paper p-4" key={session.id}>
+          <p className="text-xs font-semibold text-muted">{dateLabel(session.completedAt ?? session.startedAt)}</p><p className="mt-1 font-black">{session.name}</p>
+          <p className="mt-2 text-xs text-muted">{session.metrics.totalReps} reps · {session.metrics.tonnageKg == null ? 'tonnage —' : `${session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg tonnage${session.metrics.tonnageComplete ? '' : ' partial'}`} · {durationLabel(session.durationSeconds)}{session.rating != null ? ` · Rating ${session.rating}/5` : ''}</p>
+        </div>)}</div>
+        <div className="mt-5 space-y-3">{comparisonRows.map(row => {
+          const a = summary(row.left)!
+          const b = summary(row.right)
+          const sameExercise = Boolean(row.right && row.left.exerciseId && row.left.exerciseId === row.right.exerciseId)
+          return <article className="rounded-xl border border-line p-4" key={row.key}>
+            <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="font-black">{String(row.index + 1).padStart(2, '0')} · {row.left.slotName}</h3>{row.right && <span className="text-xs text-muted">{sameExercise ? 'Same movement' : `Different choices: ${row.left.name} · ${row.right.name}`}</span>}</div>
+            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3"><p>Session A: <span className="font-semibold">{row.left.name}</span><br /><span className="text-xs text-muted">{a.setCount} sets · {a.totalReps} reps · best load {display(a.bestLoadKg, 'kg')} · e1RM {display(a.estimatedOneRmKg, 'kg')} · volume {display(a.volumeKg, 'kg')}{row.left.kind === 'cardio' ? ` · ${durationLabel(a.durationSeconds)}` : ''}</span></p>
+              <p>{row.right ? <>Session B: <span className="font-semibold">{row.right.name}</span><br /><span className="text-xs text-muted">{b?.setCount} sets · {b?.totalReps} reps · best load {display(b?.bestLoadKg, 'kg')} · e1RM {display(b?.estimatedOneRmKg, 'kg')} · volume {display(b?.volumeKg, 'kg')}{row.right.kind === 'cardio' ? ` · ${durationLabel(b?.durationSeconds ?? 0)}` : ''}</span></> : <span className="text-xs text-muted">No matching slot in Session B.</span>}</p>
+              <p className="text-xs text-muted">{sameExercise && b ? `Change: best load ${change(a.bestLoadKg, b.bestLoadKg, 'kg')} · reps ${change(a.totalReps, b.totalReps, 'reps')} · e1RM ${change(a.estimatedOneRmKg, b.estimatedOneRmKg, 'kg')} · volume ${change(a.volumeKg, b.volumeKg, 'kg')}` : 'Movement choices differ; each movement is summarized separately.'}</p>
+            </div>
+          </article>
+        })}</div>
+      </> : <p className="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">Choose two completed sessions from the same routine.</p>}
+    </>}
   </section>
 }
 
