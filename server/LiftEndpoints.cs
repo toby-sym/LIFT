@@ -41,7 +41,8 @@ public static class LiftEndpoints
                 OwnerId = ownerId,
                 Name = input.Name.Trim(),
                 NormalizedName = normalizedName,
-                Kind = input.Kind
+                Kind = input.Kind,
+                OneRepMaxKg = input.OneRepMaxKg
             };
             db.ExerciseLibrary.Add(exercise);
             await db.SaveChangesAsync();
@@ -62,6 +63,7 @@ public static class LiftEndpoints
             exercise.Name = input.Name.Trim();
             exercise.NormalizedName = normalizedName;
             exercise.Kind = input.Kind;
+            exercise.OneRepMaxKg = input.OneRepMaxKg;
             await db.RoutineExerciseOptions.Where(x => x.ExerciseDefinitionId == id)
                 .ExecuteUpdateAsync(update => update.SetProperty(x => x.Name, exercise.Name));
             await db.SaveChangesAsync();
@@ -246,6 +248,7 @@ public static class LiftEndpoints
                     SlotName = exercise.Name,
                     ExerciseDefinitionId = exercise.Options.Count == 0 ? exercise.ExerciseDefinitionId : null,
                     Kind = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Kind ?? "strength" : "strength",
+                    OneRepMaxKg = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.OneRepMaxKg : null,
                     Section = exercise.Section,
                     TargetTempo = exercise.TargetTempo,
                     Name = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Name ?? exercise.Name : exercise.Name,
@@ -256,14 +259,16 @@ public static class LiftEndpoints
                             Order = 0,
                             ExerciseDefinitionId = exercise.ExerciseDefinitionId,
                             Name = exercise.ExerciseDefinition?.Name ?? exercise.Name,
-                            Kind = exercise.ExerciseDefinition?.Kind ?? "strength"
+                            Kind = exercise.ExerciseDefinition?.Kind ?? "strength",
+                            OneRepMaxKg = exercise.ExerciseDefinition?.OneRepMaxKg
                         }
                     }.Concat(exercise.Options.OrderBy(x => x.Order).Select(option => new WorkoutExerciseOption
                     {
                         Order = option.Order + 1,
                         ExerciseDefinitionId = option.ExerciseDefinitionId,
                         Name = option.ExerciseDefinition?.Name ?? option.Name,
-                        Kind = option.ExerciseDefinition?.Kind ?? "strength"
+                        Kind = option.ExerciseDefinition?.Kind ?? "strength",
+                        OneRepMaxKg = option.ExerciseDefinition?.OneRepMaxKg
                     })).ToList(),
                     Sets = Enumerable.Range(0, exercise.Sets).Select(setOrder => new WorkoutSet
                     {
@@ -308,6 +313,7 @@ public static class LiftEndpoints
             exercise.ExerciseDefinition = choice.ExerciseDefinition;
             exercise.Name = choice.Name;
             exercise.Kind = choice.Kind;
+            exercise.OneRepMaxKg = choice.OneRepMaxKg;
             await db.SaveChangesAsync();
             return Results.Ok(ToResponse(session));
         });
@@ -571,6 +577,10 @@ public static class LiftEndpoints
             errors["name"] = ["Name must be 1 to 100 characters."];
         if (input.Kind is not ("strength" or "bodyweight" or "cardio"))
             errors["kind"] = ["Choose strength, bodyweight, or cardio."];
+        if (input.OneRepMaxKg is < 1 or > 9999.99m)
+            errors["oneRepMaxKg"] = ["Entered 1RM must be between 1 and 9,999.99 kg."];
+        if (input.Kind == "cardio" && input.OneRepMaxKg.HasValue)
+            errors["oneRepMaxKg"] = ["A 1RM applies to strength or bodyweight movements, not cardio."];
         return errors;
     }
 
@@ -608,6 +618,48 @@ public static class LiftEndpoints
         if (input.Note is null || input.Note.Length > 500)
             errors["note"] = ["Rating notes must be 500 characters or fewer."];
         return errors;
+    }
+
+    private static readonly decimal[] RpeChartAtTen = [100m, 95.5m, 92.2m, 89.2m, 86.3m, 83.7m, 81.1m, 78.6m, 76.2m, 73.9m, 71.7m, 69.5m];
+
+    private static decimal? EffectiveLoad(string kind, WorkoutSet set) => kind switch
+    {
+        "bodyweight" when set.BodyMassKg.HasValue => set.BodyMassKg.Value + (set.WeightKg ?? 0m),
+        "bodyweight" => null,
+        "cardio" => null,
+        _ => set.WeightKg
+    };
+
+    private static decimal? ChartPercentage(int? reps, decimal? rpe, decimal? rir)
+    {
+        if (reps is null or < 1 or > 12) return null;
+        var effort = rpe ?? (rir.HasValue ? 10m - rir.Value : null);
+        if (effort is null or < 6 or > 10) return null;
+        var effectiveReps = reps.Value + (10m - effort.Value);
+        if (effectiveReps is < 1 or > 12) return null;
+        var lowerRep = (int)Math.Floor(effectiveReps);
+        var lowerPercent = RpeChartAtTen[lowerRep - 1];
+        if (effectiveReps == lowerRep || lowerRep == 12) return lowerPercent;
+        var upperPercent = RpeChartAtTen[lowerRep];
+        return lowerPercent + (upperPercent - lowerPercent) * (effectiveReps - lowerRep);
+    }
+
+    private static decimal? EstimateOneRepMax(string kind, WorkoutSet set)
+    {
+        var load = EffectiveLoad(kind, set);
+        var percent = ChartPercentage(set.Reps, set.Rpe, set.Rir);
+        return load.HasValue && percent.HasValue
+            ? Math.Round(load.Value * 100m / percent.Value, 1)
+            : null;
+    }
+
+    private static decimal? PercentageOfOneRepMax(string kind, decimal? enteredMax, WorkoutSet set)
+    {
+        var load = EffectiveLoad(kind, set);
+        if (load.HasValue && enteredMax is > 0)
+            return Math.Round(load.Value / enteredMax.Value * 100m, 1);
+        var estimate = EstimateOneRepMax(kind, set);
+        return estimate.HasValue ? ChartPercentage(set.Reps, set.Rpe, set.Rir) : null;
     }
 
     private static object SessionMetrics(WorkoutSession session)
@@ -671,15 +723,18 @@ public static class LiftEndpoints
         metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind,
+            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind, oneRepMaxKg = x.OneRepMaxKg,
             section = x.Section, targetTempo = x.TargetTempo,
             options = x.Options.OrderBy(o => o.Order).Select(o => new
             {
-                o.Id, exerciseId = o.ExerciseDefinitionId, o.Name, o.Kind
+                o.Id, exerciseId = o.ExerciseDefinitionId, o.Name, o.Kind, oneRepMaxKg = o.OneRepMaxKg
             }),
             sets = x.Sets.OrderBy(s => s.Order).Select(s => new
             {
-                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, actualTempo = s.ActualTempo, s.Completed
+                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, actualTempo = s.ActualTempo,
+                estimatedOneRmKg = EstimateOneRepMax(x.Kind, s),
+                percentageOfOneRm = PercentageOfOneRepMax(x.Kind, x.OneRepMaxKg, s),
+                s.Completed
             })
         })
     };
@@ -689,6 +744,7 @@ public static class LiftEndpoints
         exercise.Id,
         exercise.Name,
         exercise.Kind,
+        oneRepMaxKg = exercise.OneRepMaxKg,
         exercise.CreatedAt
     };
 
@@ -703,7 +759,7 @@ public static class LiftEndpoints
 
 public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null);
 public sealed record ExerciseOptionInput(string Name, Guid? ExerciseId = null);
-public sealed record ExerciseLibraryInput(string Name, string Kind);
+public sealed record ExerciseLibraryInput(string Name, string Kind, decimal? OneRepMaxKg = null);
 public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);

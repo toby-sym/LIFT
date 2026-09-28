@@ -111,7 +111,7 @@ function App() {
     })
   }
 
-  async function saveExercise(input: { name: string; kind: ExerciseKind }) {
+  async function saveExercise(input: { name: string; kind: ExerciseKind; oneRepMaxKg: number | null }) {
     await run(async () => {
       const current = editingExercise
       await request<ExerciseDefinition>(current && current !== 'new' ? `/api/exercises/${current.id}` : '/api/exercises', {
@@ -389,12 +389,12 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/75"><span>{session.metrics.totalReps} total reps</span><span>Tonnage: {session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg{!session.metrics.tonnageComplete ? ' · partial' : ''}</span></div>
     </div>
     {session.exercises.map((exercise, index) => <div className="card p-5 md:p-6" key={exercise.id}>
-      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Target tempo ${exercise.targetTempo}` : ''}{exercise.exerciseId && exercise.name !== exercise.slotName ? ` · Using ${exercise.name}` : ''}</p></div></div>
+      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.section === 'warmup' ? 'Warm-up' : exercise.section === 'cooldown' ? 'Cool-down' : 'Working sets'}{exercise.targetTempo ? ` · Target tempo ${exercise.targetTempo}` : ''}{exercise.oneRepMaxKg ? ` · Entered 1RM ${exercise.oneRepMaxKg} kg` : ''}{exercise.exerciseId && exercise.name !== exercise.slotName ? ` · Using ${exercise.name}` : ''}</p></div></div>
       {exercise.options.length > 1 && <label className="mb-4 block max-w-md text-xs font-semibold text-muted">Choose your exercise for this workout<select className="field mt-1" value={exercise.exerciseId ?? ''} onChange={event => { if (event.target.value) onChooseExercise(session.id, exercise.id, event.target.value) }} disabled={busy}>
         <option value="" disabled>Select an option</option>{exercise.options.map(option => <option key={option.id} value={option.exerciseId ?? ''}>{option.name}</option>)}
       </select></label>}
       {!exercise.exerciseId && <p className="mb-3 rounded-lg bg-[#fff8e7] px-3 py-2 text-sm text-[#74510d]">Choose an exercise option to unlock set logging.</p>}
-      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.rpe}:${set.rir}:${set.actualTempo}:${set.completed}`} set={set} kind={exercise.kind} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
+      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.rpe}:${set.rir}:${set.actualTempo}:${set.completed}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
     </div>)}
     <div className="card p-5 md:p-6"><label className="block text-sm font-bold" htmlFor="workout-notes">Workout notes</label>
       <textarea id="workout-notes" className="field mt-3 min-h-28 resize-y" maxLength={2000} value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel?" />
@@ -407,7 +407,7 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
   </div>
 }
 
-function SetRow({ set, kind, busy, disabled, onSave }: { set: WorkoutSet; kind: ExerciseKind; busy: boolean; disabled: boolean; onSave: (value: WorkoutSetInput) => void }) {
+function SetRow({ set, kind, oneRepMaxKg, busy, disabled, onSave }: { set: WorkoutSet; kind: ExerciseKind; oneRepMaxKg: number | null; busy: boolean; disabled: boolean; onSave: (value: WorkoutSetInput) => void }) {
   const [weight, setWeight] = useState(set.weightKg?.toString() ?? '')
   const [reps, setReps] = useState(set.reps?.toString() ?? '')
   const [rpe, setRpe] = useState(set.rpe?.toString() ?? '')
@@ -434,6 +434,10 @@ function SetRow({ set, kind, busy, disabled, onSave }: { set: WorkoutSet; kind: 
       <button className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-ink text-white' : 'bg-accent text-ink'}`} disabled={busy || disabled} onClick={() => onSave(value(!set.completed))}>{set.completed ? '✓ Done' : 'Complete'}</button>
       <RestTimer />
     </div>
+    {(set.estimatedOneRmKg != null || set.percentageOfOneRm != null) && <div className="col-span-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-semibold text-muted sm:col-span-7">
+      {set.percentageOfOneRm != null && <span>{set.percentageOfOneRm}% {oneRepMaxKg ? 'of entered 1RM' : 'of estimated 1RM'}</span>}
+      {set.estimatedOneRmKg != null && <span>Estimated 1RM: {set.estimatedOneRmKg} kg</span>}
+    </div>}
   </div>
 }
 
@@ -558,15 +562,21 @@ function ProgressPage({ stats, entries, onSave, onDelete }: {
 
 function HistoryPage({ history }: { history: WorkoutSession[] }) {
   function describeSet(exercise: WorkoutSession['exercises'][number], set: WorkoutSet) {
+    let description: string
     if (exercise.kind === 'bodyweight') {
       const added = set.weightKg ?? 0
       const load = set.bodyMassKg == null
         ? added > 0 ? `+ ${added} kg added (body mass not recorded)` : 'Bodyweight (body mass not recorded)'
         : `${set.bodyMassKg} kg body mass${added > 0 ? ` + ${added} kg added` : ''}`
-      return `${load} × ${set.reps}`
-    }
-    if (exercise.kind === 'cardio') return `${set.reps ?? '—'} reps`
-    return `${set.weightKg} kg × ${set.reps}`
+      description = `${load} × ${set.reps}`
+    } else if (exercise.kind === 'cardio') description = `${set.reps ?? '—'} reps`
+    else description = `${set.weightKg} kg × ${set.reps}`
+    const details = [
+      set.percentageOfOneRm != null ? `${set.percentageOfOneRm}% 1RM` : '',
+      set.estimatedOneRmKg != null ? `estimated 1RM ${set.estimatedOneRmKg} kg` : '',
+      set.actualTempo ? `tempo ${set.actualTempo}` : '',
+    ].filter(Boolean)
+    return `${description}${details.length ? ` (${details.join(' · ')})` : ''}`
   }
 
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -587,23 +597,26 @@ function ExercisesPage({ exercises, onNew, onEdit, onDelete }: {
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-muted">{exercises.length} saved {exercises.length === 1 ? 'exercise' : 'exercises'}</p><button className="button-primary" onClick={onNew}>+ Add exercise</button></div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{exercises.map(exercise => <article className="card flex items-center justify-between gap-3 p-5" key={exercise.id}>
-      <div className="min-w-0"><h2 className="truncate font-bold">{exercise.name}</h2><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.kind === 'strength' ? 'Loaded strength' : exercise.kind}</p></div>
+      <div className="min-w-0"><h2 className="truncate font-bold">{exercise.name}</h2><p className="mt-1 text-xs font-semibold capitalize text-muted">{exercise.kind === 'strength' ? 'Loaded strength' : exercise.kind}{exercise.oneRepMaxKg ? ` · 1RM ${exercise.oneRepMaxKg} kg` : ''}</p></div>
       <div className="flex shrink-0 gap-2"><button className="button-quiet !px-3 !py-2" onClick={() => onEdit(exercise)}>Edit</button><button className="text-sm font-semibold text-muted hover:text-red-700" aria-label={`Remove ${exercise.name}`} onClick={() => onDelete(exercise)}>Remove</button></div>
     </article>)}</div>
   </div>
 }
 
 function ExerciseEditor({ exercise, busy, onClose, onSave }: {
-  exercise: ExerciseDefinition | null; busy: boolean; onClose: () => void; onSave: (input: { name: string; kind: ExerciseKind }) => void
+  exercise: ExerciseDefinition | null; busy: boolean; onClose: () => void; onSave: (input: { name: string; kind: ExerciseKind; oneRepMaxKg: number | null }) => void
 }) {
   const [name, setName] = useState(exercise?.name ?? '')
   const [kind, setKind] = useState<ExerciseKind>(exercise?.kind ?? 'strength')
-  function submit(event: FormEvent) { event.preventDefault(); onSave({ name, kind }) }
+  const [oneRepMax, setOneRepMax] = useState(exercise?.oneRepMaxKg?.toString() ?? '')
+  function submit(event: FormEvent) { event.preventDefault(); onSave({ name, kind, oneRepMaxKg: oneRepMax === '' ? null : Number(oneRepMax) }) }
   return <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-ink/60 p-4 py-8 md:items-center" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl md:p-8">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow mb-2">Exercise library</p><h2 className="text-2xl font-black">{exercise ? 'Edit exercise' : 'Add an exercise'}</h2></div><button type="button" onClick={onClose} className="text-2xl leading-none text-muted hover:text-ink" aria-label="Close">×</button></div>
       <label className="mt-7 block text-sm font-bold">Exercise name<input className="field mt-2" value={name} onChange={event => setName(event.target.value)} maxLength={100} required autoFocus placeholder="e.g. Incline chest press" /></label>
-      <label className="mt-5 block text-sm font-bold">Exercise type<select className="field mt-2" value={kind} onChange={event => setKind(event.target.value as ExerciseKind)}><option value="strength">Loaded strength</option><option value="bodyweight">Bodyweight</option><option value="cardio">Cardio</option></select></label>
+      <label className="mt-5 block text-sm font-bold">Exercise type<select className="field mt-2" value={kind} onChange={event => { const nextKind = event.target.value as ExerciseKind; setKind(nextKind); if (nextKind === 'cardio') setOneRepMax('') }}><option value="strength">Loaded strength</option><option value="bodyweight">Bodyweight</option><option value="cardio">Cardio</option></select></label>
+      {kind !== 'cardio' && <label className="mt-5 block text-sm font-bold">Entered 1RM (kg) <span className="font-normal text-muted">(optional)</span><input className="field mt-2" type="number" min="1" max="9999.99" step="0.25" inputMode="decimal" value={oneRepMax} onChange={event => setOneRepMax(event.target.value)} placeholder="Use a recent tested max" /></label>}
+      <p className="mt-3 text-xs leading-5 text-muted">Estimated 1RMs use a generalized RPE chart for sets of 1–12 reps at RPE 6–10. Treat them as estimates; your chart may differ by lift.</p>
       <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Cancel</button><button className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save exercise'}</button></div>
     </form>
   </div>
