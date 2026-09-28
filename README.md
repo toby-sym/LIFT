@@ -50,3 +50,7 @@ npm run lint --prefix client
 ```
 
 The API test uses an in-memory SQLite database to check the account, routine and workout flow, including ownership isolation. The generated migration targets PostgreSQL.
+
+## GitHub Actions
+
+`.github/workflows/ci.yml` runs on every push and pull request, and can also be started manually from GitHub Actions. GitHub-hosted Ubuntu runners start a temporary PostgreSQL service, apply the EF Core migration, run the API tests, lint and build the frontend, then build the combined Docker image. A push to the repository's default branch also uploads the image as a 7-day workflow artifact. This provides CI and a downloadable build without a deployment environment.
