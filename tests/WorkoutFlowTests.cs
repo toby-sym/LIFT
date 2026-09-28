@@ -311,6 +311,65 @@ public sealed class WorkoutFlowTests
         Assert.Equal(78.4m, active.GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("bodyMassKg").GetDecimal());
     }
 
+    [Fact]
+    public async Task Session_experience_prescriptions_rating_and_duration_are_saved()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var client = factory.CreateClient();
+        await RegisterAndSignIn(client, "session-experience@example.com");
+
+        var routineResponse = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Technique day",
+            exercises = new[]
+            {
+                new { name = "Tempo squat", sets = 1, targetReps = 5, section = "warmup", targetTempo = "3-1-1" },
+                new { name = "Hip stretch", sets = 1, targetReps = 8, section = "cooldown", targetTempo = "" }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, routineResponse.StatusCode);
+        var routine = await routineResponse.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("warmup", routine.GetProperty("exercises")[0].GetProperty("section").GetString());
+        Assert.Equal("3-1-1", routine.GetProperty("exercises")[0].GetProperty("targetTempo").GetString());
+
+        var sessionResponse = await client.PostAsJsonAsync("/api/sessions", new { routineId = routine.GetProperty("id").GetString() });
+        Assert.Equal(HttpStatusCode.Created, sessionResponse.StatusCode);
+        var session = await sessionResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var sessionId = session.GetProperty("id").GetString();
+        var exercise = session.GetProperty("exercises")[0];
+        Assert.Equal("warmup", exercise.GetProperty("section").GetString());
+        Assert.Equal("3-1-1", exercise.GetProperty("targetTempo").GetString());
+
+        var setId = exercise.GetProperty("sets")[0].GetProperty("id").GetString();
+        var invalidTempo = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = 20, reps = 5, completed = true, actualTempo = "slow"
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidTempo.StatusCode);
+        var logged = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+        {
+            weightKg = 20, reps = 5, completed = true, actualTempo = "2-1-2"
+        });
+        Assert.Equal(HttpStatusCode.OK, logged.StatusCode);
+        Assert.Equal("2-1-2", (await logged.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("actualTempo").GetString());
+
+        var invalidRating = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/rating", new { rating = 6, note = "Too much" });
+        Assert.Equal(HttpStatusCode.BadRequest, invalidRating.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync($"/api/sessions/{sessionId}/rating", new
+        {
+            rating = 5, note = "Strong session"
+        })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/sessions/{sessionId}/finish", null)).StatusCode);
+
+        var history = await client.GetFromJsonAsync<JsonElement>("/api/sessions/history");
+        Assert.Equal(5, history[0].GetProperty("rating").GetInt32());
+        Assert.Equal("Strong session", history[0].GetProperty("ratingNote").GetString());
+        Assert.True(history[0].GetProperty("durationSeconds").GetInt64() >= 0);
+        Assert.Equal("2-1-2", history[0].GetProperty("exercises")[0].GetProperty("sets")[0].GetProperty("actualTempo").GetString());
+    }
+
     private static async Task RegisterAndSignIn(HttpClient client, string email)
     {
         var password = "StrongPass1!";

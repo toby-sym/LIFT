@@ -44,6 +44,8 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
         modelBuilder.Entity<RoutineExercise>(entity =>
         {
             entity.Property(x => x.Name).HasMaxLength(100);
+            entity.Property(x => x.Section).HasMaxLength(20);
+            entity.Property(x => x.TargetTempo).HasMaxLength(20);
             entity.HasIndex(x => new { x.RoutineId, x.Order });
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
             entity.HasMany(x => x.Options).WithOne().HasForeignKey(x => x.RoutineExerciseId).OnDelete(DeleteBehavior.Cascade);
@@ -59,6 +61,7 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.HasIndex(x => new { x.OwnerId, x.StartedAt });
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.Notes).HasMaxLength(2000);
+            entity.Property(x => x.RatingNote).HasMaxLength(500);
             entity.HasOne<IdentityUser>().WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
             entity.HasMany(x => x.Exercises).WithOne().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
         });
@@ -67,6 +70,8 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.Name).HasMaxLength(100);
             entity.Property(x => x.SlotName).HasMaxLength(100);
             entity.Property(x => x.Kind).HasMaxLength(20);
+            entity.Property(x => x.Section).HasMaxLength(20);
+            entity.Property(x => x.TargetTempo).HasMaxLength(20);
             entity.HasIndex(x => new { x.SessionId, x.Order });
             entity.HasOne<RoutineExercise>().WithMany().HasForeignKey(x => x.RoutineSlotId).OnDelete(DeleteBehavior.SetNull);
             entity.HasOne(x => x.ExerciseDefinition).WithMany().HasForeignKey(x => x.ExerciseDefinitionId).OnDelete(DeleteBehavior.SetNull);
@@ -86,6 +91,7 @@ public sealed class LiftDbContext(DbContextOptions<LiftDbContext> options) : Ide
             entity.Property(x => x.BodyMassKg).HasPrecision(7, 2);
             entity.Property(x => x.Rpe).HasPrecision(3, 1);
             entity.Property(x => x.Rir).HasPrecision(3, 1);
+            entity.Property(x => x.ActualTempo).HasMaxLength(20);
             entity.HasIndex(x => new { x.ExerciseId, x.Order });
         });
     }
@@ -128,6 +134,8 @@ public sealed class RoutineExercise
     public required string Name { get; set; }
     public int Sets { get; set; }
     public int TargetReps { get; set; }
+    public string Section { get; set; } = "work";
+    public string? TargetTempo { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
     public List<RoutineExerciseOption> Options { get; set; } = [];
 }
@@ -151,6 +159,8 @@ public sealed class WorkoutSession
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
     public string Notes { get; set; } = "";
+    public int? Rating { get; set; }
+    public string RatingNote { get; set; } = "";
     public List<WorkoutExercise> Exercises { get; set; } = [];
 }
 
@@ -164,6 +174,8 @@ public sealed class WorkoutExercise
     public string? SlotName { get; set; }
     public required string Name { get; set; }
     public string Kind { get; set; } = "strength";
+    public string Section { get; set; } = "work";
+    public string? TargetTempo { get; set; }
     public ExerciseDefinition? ExerciseDefinition { get; set; }
     public List<WorkoutExerciseOption> Options { get; set; } = [];
     public List<WorkoutSet> Sets { get; set; } = [];
@@ -191,5 +203,6 @@ public sealed class WorkoutSet
     public int? Reps { get; set; }
     public decimal? Rpe { get; set; }
     public decimal? Rir { get; set; }
+    public string? ActualTempo { get; set; }
     public bool Completed { get; set; }
 }

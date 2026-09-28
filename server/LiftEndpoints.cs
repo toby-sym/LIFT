@@ -246,6 +246,8 @@ public static class LiftEndpoints
                     SlotName = exercise.Name,
                     ExerciseDefinitionId = exercise.Options.Count == 0 ? exercise.ExerciseDefinitionId : null,
                     Kind = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Kind ?? "strength" : "strength",
+                    Section = exercise.Section,
+                    TargetTempo = exercise.TargetTempo,
                     Name = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Name ?? exercise.Name : exercise.Name,
                     Options = new[]
                     {
@@ -334,6 +336,7 @@ public static class LiftEndpoints
             set.Reps = input.Reps;
             set.Rpe = input.Rpe;
             set.Rir = input.Rir;
+            set.ActualTempo = string.IsNullOrWhiteSpace(input.ActualTempo) ? null : input.ActualTempo.Trim();
             set.Completed = input.Completed;
             set.BodyMassKg = input.Completed && exercise.Kind == "bodyweight"
                 ? await db.BodyweightEntries.AsNoTracking()
@@ -356,6 +359,20 @@ public static class LiftEndpoints
                 x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt == null);
             if (session is null) return Results.NotFound();
             session.Notes = input.Notes.Trim();
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
+        api.MapPut("/sessions/{id:guid}/rating", async (
+            Guid id, RatingInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var errors = Validate(input);
+            if (errors.Count > 0) return Results.ValidationProblem(errors);
+            var session = await db.WorkoutSessions.FirstOrDefaultAsync(x =>
+                x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt == null);
+            if (session is null) return Results.NotFound();
+            session.Rating = input.Rating;
+            session.RatingNote = input.Note.Trim();
             await db.SaveChangesAsync();
             return Results.NoContent();
         });
@@ -457,6 +474,8 @@ public static class LiftEndpoints
             slot.ExerciseDefinition = resolved[0];
             slot.Sets = input.Sets;
             slot.TargetReps = input.TargetReps;
+            slot.Section = input.Section;
+            slot.TargetTempo = string.IsNullOrWhiteSpace(input.TargetTempo) ? null : input.TargetTempo.Trim();
             var priorOptions = slot.Options.OrderBy(x => x.Order).ToList();
             var nextOptions = resolved.Skip(1).Select((definition, optionOrder) =>
             {
@@ -495,6 +514,13 @@ public static class LiftEndpoints
 
     private static string Normalize(string value) => value.Trim().ToUpperInvariant();
 
+    private static bool IsValidTempo(string? tempo)
+    {
+        if (string.IsNullOrWhiteSpace(tempo)) return true;
+        var parts = tempo.Trim().Split('-');
+        return parts.Length is 3 or 4 && parts.All(part => int.TryParse(part, out var seconds) && seconds is >= 0 and <= 99);
+    }
+
     private static Dictionary<string, string[]> Validate(RoutineInput input)
     {
         var errors = new Dictionary<string, string[]>();
@@ -503,7 +529,8 @@ public static class LiftEndpoints
         if (input.Exercises is null || input.Exercises.Count is < 1 or > 20)
             errors["exercises"] = ["Add 1 to 20 exercises."];
         else if (input.Exercises.Any(x => x is null || string.IsNullOrWhiteSpace(x.Name) ||
-                     x.Name.Trim().Length > 100 || x.Sets is < 1 or > 10 || x.TargetReps is < 1 or > 100))
+                     x.Name.Trim().Length > 100 || x.Sets is < 1 or > 10 || x.TargetReps is < 1 or > 100 ||
+                     x.Section is not ("work" or "warmup" or "cooldown") || !IsValidTempo(x.TargetTempo)))
             errors["exercises"] = ["Each exercise needs a name, 1–10 sets and a target of 1–100 reps."];
         return errors;
     }
@@ -562,12 +589,24 @@ public static class LiftEndpoints
             errors["weightKg"] = ["Weight must be between 0 and 9,999.99 kg."];
         if (input.Reps is < 0 or > 1000)
             errors["reps"] = ["Reps must be between 0 and 1,000."];
+        if (!IsValidTempo(input.ActualTempo))
+            errors["actualTempo"] = ["Tempo should use three or four non-negative counts, such as 3-1-1."];
         if (input.Rpe is < 1 or > 10 || input.Rpe.HasValue && input.Rpe.Value * 2 % 1 != 0)
             errors["rpe"] = ["RPE must use half-point steps from 1 to 10."];
         if (input.Rir is < 0 or > 10 || input.Rir.HasValue && input.Rir.Value * 2 % 1 != 0)
             errors["rir"] = ["RIR must use half-point steps from 0 to 10."];
         if (input.Rpe.HasValue && input.Rir.HasValue && input.Rpe.Value + input.Rir.Value != 10)
             errors["effort"] = ["RPE and RIR must add up to 10 when both are entered."];
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> Validate(RatingInput input)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (input.Rating is < 1 or > 5)
+            errors["rating"] = ["Session rating must be between 1 and 5, or omitted."];
+        if (input.Note is null || input.Note.Length > 500)
+            errors["note"] = ["Rating notes must be 500 characters or fewer."];
         return errors;
     }
 
@@ -604,6 +643,8 @@ public static class LiftEndpoints
         exercises = routine.Exercises.OrderBy(x => x.Order).Select(x => new
         {
             x.Id, x.Name, exerciseId = x.ExerciseDefinitionId, x.Sets, x.TargetReps,
+            section = x.Section,
+            targetTempo = x.TargetTempo,
             options = new[]
             {
                 new { exerciseId = x.ExerciseDefinitionId, name = x.ExerciseDefinition?.Name ?? x.Name, kind = x.ExerciseDefinition?.Kind ?? "strength" }
@@ -624,17 +665,21 @@ public static class LiftEndpoints
         session.StartedAt,
         session.CompletedAt,
         session.Notes,
+        session.Rating,
+        session.RatingNote,
+        durationSeconds = (long)Math.Max(0, ((session.CompletedAt ?? DateTime.UtcNow) - session.StartedAt).TotalSeconds),
         metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
             x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind,
+            section = x.Section, targetTempo = x.TargetTempo,
             options = x.Options.OrderBy(o => o.Order).Select(o => new
             {
                 o.Id, exerciseId = o.ExerciseDefinitionId, o.Name, o.Kind
             }),
             sets = x.Sets.OrderBy(s => s.Order).Select(s => new
             {
-                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, s.Completed
+                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, actualTempo = s.ActualTempo, s.Completed
             })
         })
     };
@@ -656,12 +701,13 @@ public static class LiftEndpoints
     };
 }
 
-public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null);
+public sealed record ExerciseInput(string Name, int Sets, int TargetReps, Guid? ExerciseId = null, Guid? Id = null, List<ExerciseOptionInput>? Options = null, string Section = "work", string? TargetTempo = null);
 public sealed record ExerciseOptionInput(string Name, Guid? ExerciseId = null);
 public sealed record ExerciseLibraryInput(string Name, string Kind);
 public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);
 public sealed record ExerciseChoiceInput(Guid ExerciseId, bool ClearLoggedSets = false);
-public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null);
+public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null, string? ActualTempo = null);
 public sealed record NotesInput(string Notes);
+public sealed record RatingInput(int? Rating, string Note = "");
