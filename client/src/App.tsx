@@ -120,6 +120,18 @@ function App() {
     })
   }
 
+  async function chooseExercise(sessionId: string, workoutExerciseId: string, exerciseId: string) {
+    const exercise = active?.exercises.find(item => item.id === workoutExerciseId)
+    if (exercise?.exerciseId && exercise.exerciseId !== exerciseId &&
+        !window.confirm('Changing this choice clears saved sets and discards unsaved entries for this slot. Continue?')) return
+    const clearLoggedSets = Boolean(exercise?.sets.some(set => set.completed || set.weightKg !== null || set.reps !== null))
+    await run(async () => {
+      setActive(await request<WorkoutSession>(`/api/sessions/${sessionId}/exercises/${workoutExerciseId}/choice`, {
+        method: 'PUT', body: json({ exerciseId, clearLoggedSets }),
+      }))
+    })
+  }
+
   async function saveSet(sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) {
     await run(async () => {
       setActive(await request<WorkoutSession>(`/api/sessions/${sessionId}/sets/${setId}`, {
@@ -201,7 +213,7 @@ function App() {
 
         {page === 'today' && <TodayPage active={active} routines={routines} stats={stats} busy={busy}
           onStart={startWorkout} onNew={() => setEditing('new')} onSaveSet={saveSet} onSaveNotes={saveNotes}
-          onFinish={finishWorkout} onDiscard={discardWorkout} />}
+          onChooseExercise={chooseExercise} onFinish={finishWorkout} onDiscard={discardWorkout} />}
         {page === 'routines' && <RoutinesPage routines={routines} busy={busy} hasActive={Boolean(active)} onStart={startWorkout}
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
         {page === 'exercises' && <ExercisesPage exercises={exerciseLibrary} onNew={() => setEditingExercise('new')}
@@ -279,16 +291,17 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
   </div>
 }
 
-function TodayPage({ active, routines, stats, busy, onStart, onNew, onSaveSet, onSaveNotes, onFinish, onDiscard }: {
+function TodayPage({ active, routines, stats, busy, onStart, onNew, onSaveSet, onSaveNotes, onChooseExercise, onFinish, onDiscard }: {
   active: WorkoutSession | null; routines: Routine[]; stats: Stats; busy: boolean
   onStart: (routine: Routine) => void; onNew: () => void
   onSaveSet: (sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) => void
   onSaveNotes: (sessionId: string, notes: string) => void
+  onChooseExercise: (sessionId: string, workoutExerciseId: string, exerciseId: string) => void
   onFinish: (id: string, notes: string) => void; onDiscard: (id: string) => void
 }) {
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
     <div>
-      {active ? <WorkoutPanel key={active.id} session={active} busy={busy} onSaveSet={onSaveSet} onSaveNotes={onSaveNotes} onFinish={onFinish} onDiscard={onDiscard} /> : <>
+      {active ? <WorkoutPanel key={active.id} session={active} busy={busy} onSaveSet={onSaveSet} onSaveNotes={onSaveNotes} onChooseExercise={onChooseExercise} onFinish={onFinish} onDiscard={onDiscard} /> : <>
         <div className="mb-5 rounded-2xl bg-ink p-7 text-white md:p-9">
           <p className="mb-3 text-xs font-bold uppercase tracking-[.16em] text-accent">Ready when you are</p>
           <h2 className="max-w-lg text-3xl font-black tracking-tight">Choose a routine and get to work.</h2>
@@ -311,10 +324,11 @@ function TodayPage({ active, routines, stats, busy, onStart, onNew, onSaveSet, o
   </div>
 }
 
-function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onFinish, onDiscard }: {
+function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise, onFinish, onDiscard }: {
   session: WorkoutSession; busy: boolean
   onSaveSet: (sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) => void
   onSaveNotes: (sessionId: string, notes: string) => void
+  onChooseExercise: (sessionId: string, workoutExerciseId: string, exerciseId: string) => void
   onFinish: (id: string, notes: string) => void; onDiscard: (id: string) => void
 }) {
   const [notes, setNotes] = useState(session.notes)
@@ -330,8 +344,12 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onFinish, onDisca
       <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${total ? completed / total * 100 : 0}%` }} /></div>
     </div>
     {session.exercises.map((exercise, index) => <div className="card p-5 md:p-6" key={exercise.id}>
-      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><h3 className="text-lg font-black">{exercise.name}</h3></div>
-      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${set.id}:${set.weightKg}:${set.reps}:${set.completed}`} set={set} busy={busy} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
+      <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3>{exercise.exerciseId && exercise.name !== exercise.slotName && <p className="mt-1 text-xs font-semibold text-muted">Using {exercise.name}</p>}</div></div>
+      {exercise.options.length > 1 && <label className="mb-4 block max-w-md text-xs font-semibold text-muted">Choose your exercise for this workout<select className="field mt-1" value={exercise.exerciseId ?? ''} onChange={event => { if (event.target.value) onChooseExercise(session.id, exercise.id, event.target.value) }} disabled={busy}>
+        <option value="" disabled>Select an option</option>{exercise.options.map(option => <option key={option.id} value={option.exerciseId ?? ''}>{option.name}</option>)}
+      </select></label>}
+      {!exercise.exerciseId && <p className="mb-3 rounded-lg bg-[#fff8e7] px-3 py-2 text-sm text-[#74510d]">Choose an exercise option to unlock set logging.</p>}
+      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.completed}`} set={set} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
     </div>)}
     <div className="card p-5 md:p-6"><label className="block text-sm font-bold" htmlFor="workout-notes">Workout notes</label>
       <textarea id="workout-notes" className="field mt-3 min-h-28 resize-y" maxLength={2000} value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel?" />
@@ -343,7 +361,7 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onFinish, onDisca
   </div>
 }
 
-function SetRow({ set, busy, onSave }: { set: WorkoutSet; busy: boolean; onSave: (value: { weightKg: number | null; reps: number | null; completed: boolean }) => void }) {
+function SetRow({ set, busy, disabled, onSave }: { set: WorkoutSet; busy: boolean; disabled: boolean; onSave: (value: { weightKg: number | null; reps: number | null; completed: boolean }) => void }) {
   const [weight, setWeight] = useState(set.weightKg?.toString() ?? '')
   const [reps, setReps] = useState(set.reps?.toString() ?? '')
   const value = (completed: boolean) => ({
@@ -354,11 +372,11 @@ function SetRow({ set, busy, onSave }: { set: WorkoutSet; busy: boolean; onSave:
 
   return <div className={`grid grid-cols-[32px_1fr_1fr] items-end gap-2 rounded-xl p-3 sm:grid-cols-[42px_1fr_1fr_auto] ${set.completed ? 'bg-[#f2f9e7]' : 'bg-paper'}`}>
     <div className="pb-2 text-center text-sm font-black text-muted">{set.order + 1}</div>
-    <label className="text-xs font-semibold text-muted">Weight (kg)<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="9999.99" step="0.25" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} /></label>
-    <label className="text-xs font-semibold text-muted">Reps <span className="font-normal">/ {set.targetReps}</span><input className="field mt-1 !bg-white !py-2" type="number" min="0" max="1000" step="1" inputMode="numeric" value={reps} onChange={e => setReps(e.target.value)} /></label>
+    <label className="text-xs font-semibold text-muted">Weight (kg)<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="9999.99" step="0.25" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} disabled={disabled} /></label>
+    <label className="text-xs font-semibold text-muted">Reps <span className="font-normal">/ {set.targetReps}</span><input className="field mt-1 !bg-white !py-2" type="number" min="0" max="1000" step="1" inputMode="numeric" value={reps} onChange={e => setReps(e.target.value)} disabled={disabled} /></label>
     <div className="col-span-3 flex justify-end gap-2 sm:col-span-1">
-      <button className="button-quiet !px-3 !py-2" disabled={busy} onClick={() => onSave(value(set.completed))}>Save</button>
-      <button className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-ink text-white' : 'bg-accent text-ink'}`} disabled={busy} onClick={() => onSave(value(!set.completed))}>{set.completed ? '✓ Done' : 'Complete'}</button>
+      <button className="button-quiet !px-3 !py-2" disabled={busy || disabled} onClick={() => onSave(value(set.completed))}>Save</button>
+      <button className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-ink text-white' : 'bg-accent text-ink'}`} disabled={busy || disabled} onClick={() => onSave(value(!set.completed))}>{set.completed ? '✓ Done' : 'Complete'}</button>
     </div>
   </div>
 }
@@ -369,7 +387,7 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   if (!routines.length) return <EmptyState title="Build your first routine" body="Add exercises, set counts and rep targets. You can change them any time." action="Create a routine" onAction={onNew} />
   return <div className="grid gap-5 md:grid-cols-2">{routines.map(routine => <div className="card flex flex-col p-6" key={routine.id}>
     <div className="flex items-start justify-between gap-3"><div><p className="eyebrow mb-2">Routine</p><h2 className="text-2xl font-black tracking-tight">{routine.name}</h2></div><span className="rounded-lg bg-paper px-3 py-1 text-xs font-bold text-muted">{routine.exercises.length} exercises</span></div>
-    <div className="my-6 flex-1 divide-y divide-line">{routine.exercises.map(exercise => <div key={exercise.id} className="flex justify-between gap-4 py-3 text-sm"><span className="font-semibold">{exercise.name}</span><span className="whitespace-nowrap text-muted">{exercise.sets} × {exercise.targetReps}</span></div>)}</div>
+    <div className="my-6 flex-1 divide-y divide-line">{routine.exercises.map(exercise => <div key={exercise.id} className="flex justify-between gap-4 py-3 text-sm"><div><p className="font-semibold">{exercise.name}</p><p className="mt-1 text-xs text-muted">{exercise.options.map(option => option.name).join(' · ')}</p></div><span className="whitespace-nowrap text-muted">{exercise.sets} × {exercise.targetReps}</span></div>)}</div>
     <div className="flex flex-wrap gap-2"><button className="button-primary" disabled={busy || hasActive} title={hasActive ? 'Finish your current workout first' : undefined} onClick={() => onStart(routine)}>Start workout</button><button className="button-quiet" onClick={() => onEdit(routine)}>Edit</button><button className="px-3 text-sm font-semibold text-muted hover:text-red-700" disabled={busy} onClick={() => onDelete(routine)}>Delete</button></div>
   </div>)}</div>
 }
@@ -428,16 +446,28 @@ function ExerciseEditor({ exercise, busy, onClose, onSave }: {
 
 function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: Routine | null; busy: boolean; library: ExerciseDefinition[]; onClose: () => void; onSave: (input: RoutineInput) => void }) {
   const [name, setName] = useState(routine?.name ?? '')
-  const [exercises, setExercises] = useState<RoutineInput['exercises']>(routine?.exercises.map(x => ({ name: x.name, exerciseId: x.exerciseId, sets: x.sets, targetReps: x.targetReps })) ?? [{ name: '', exerciseId: null, sets: 3, targetReps: 8 }])
+  const [exercises, setExercises] = useState<RoutineInput['exercises']>(routine?.exercises.map(x => ({
+    id: x.id, name: x.name, exerciseId: x.exerciseId,
+    options: x.options.map(option => ({ name: option.name, exerciseId: option.exerciseId })),
+    sets: x.sets, targetReps: x.targetReps,
+  })) ?? [{ name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8 }])
 
   function change(index: number, field: 'name' | 'sets' | 'targetReps', value: string) {
     setExercises(current => current.map((item, i) => {
       if (i !== index) return item
-      if (field === 'name') {
-        const match = library.find(entry => entry.name.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase())
-        return { ...item, name: value, exerciseId: match?.id ?? null }
-      }
+      if (field === 'name') return { ...item, name: value }
       return { ...item, [field]: Number(value) }
+    }))
+  }
+
+  function changeOption(index: number, optionIndex: number, value: string) {
+    setExercises(current => current.map((item, i) => {
+      if (i !== index) return item
+      const currentOption = item.options[optionIndex]
+      const match = library.find(entry => entry.name.trim().toLocaleLowerCase() === value.trim().toLocaleLowerCase())
+      const options = item.options.map((option, j) => j === optionIndex ? { name: value, exerciseId: match?.id ?? null } : option)
+      const shouldUpdateLabel = optionIndex === 0 && (!item.name.trim() || item.name === currentOption.name)
+      return { ...item, name: shouldUpdateLabel ? value : item.name, options }
     }))
   }
 
@@ -450,15 +480,20 @@ function RoutineEditor({ routine, busy, library, onClose, onSave }: { routine: R
     <form onSubmit={submit} className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl md:p-8">
       <div className="flex items-start justify-between gap-4"><div><p className="eyebrow mb-2">Training plan</p><h2 className="text-2xl font-black">{routine ? 'Edit routine' : 'New routine'}</h2></div><button type="button" onClick={onClose} className="text-2xl leading-none text-muted hover:text-ink" aria-label="Close">×</button></div>
       <label className="mt-7 block text-sm font-bold">Routine name<input className="field mt-2" value={name} onChange={e => setName(e.target.value)} maxLength={100} required placeholder="e.g. Upper body A" /></label>
-      <div className="mt-7 flex items-center justify-between"><h3 className="font-black">Exercises</h3><span className="text-xs text-muted">Sets and rep targets</span></div>
+      <div className="mt-7 flex items-center justify-between"><h3 className="font-black">Exercise slots</h3><span className="text-xs text-muted">Shared set and rep targets</span></div>
       <div className="mt-3 space-y-3">{exercises.map((exercise, index) => <div key={index} className="rounded-xl border border-line bg-paper p-4">
-        <div className="mb-3 flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-muted">Exercise {index + 1}</span><button type="button" disabled={exercises.length === 1} className="text-xs font-bold text-muted hover:text-red-700" onClick={() => setExercises(current => current.filter((_, i) => i !== index))}>Remove</button></div>
-        <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]"><label className="text-xs font-semibold text-muted">Name<input className="field mt-1" list="exercise-library-options" value={exercise.name} onChange={e => change(index, 'name', e.target.value)} maxLength={100} required placeholder="e.g. Bench press" /></label>
-          <label className="text-xs font-semibold text-muted">Sets<input className="field mt-1" type="number" min="1" max="10" value={exercise.sets} onChange={e => change(index, 'sets', e.target.value)} required /></label>
+        <div className="mb-3 flex items-center justify-between"><span className="text-xs font-black uppercase tracking-wider text-muted">Slot {index + 1}</span><button type="button" disabled={exercises.length === 1} className="text-xs font-bold text-muted hover:text-red-700" onClick={() => setExercises(current => current.filter((_, i) => i !== index))}>Remove slot</button></div>
+        <label className="block text-xs font-semibold text-muted">Movement label<input className="field mt-1" value={exercise.name} onChange={e => change(index, 'name', e.target.value)} maxLength={100} required placeholder="e.g. Incline chest press" /></label>
+        <div className="mt-4 space-y-2"><p className="text-xs font-semibold text-muted">Exercise choices · use one each workout</p>{exercise.options.map((option, optionIndex) => <div key={optionIndex} className="flex items-end gap-2">
+          <label className="min-w-0 flex-1 text-xs font-semibold text-muted">Choice {optionIndex + 1}<input className="field mt-1" list="exercise-library-options" value={option.name} onChange={event => changeOption(index, optionIndex, event.target.value)} maxLength={100} required placeholder="e.g. Cable incline press" /></label>
+          <button type="button" className="button-quiet !px-3 !py-2" disabled={exercise.options.length === 1} onClick={() => setExercises(current => current.map((item, i) => i === index ? { ...item, options: item.options.filter((_, j) => j !== optionIndex) } : item))} aria-label={`Remove choice ${optionIndex + 1}`}>×</button>
+        </div>)}</div>
+        <button type="button" className="button-quiet mt-2 !px-3 !py-2" disabled={exercise.options.length >= 8} onClick={() => setExercises(current => current.map((item, i) => i === index ? { ...item, options: [...item.options, { name: '', exerciseId: null }] } : item))}>+ Add exercise choice</button>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr]"><label className="text-xs font-semibold text-muted">Sets<input className="field mt-1" type="number" min="1" max="10" value={exercise.sets} onChange={e => change(index, 'sets', e.target.value)} required /></label>
           <label className="text-xs font-semibold text-muted">Reps<input className="field mt-1" type="number" min="1" max="100" value={exercise.targetReps} onChange={e => change(index, 'targetReps', e.target.value)} required /></label></div>
       </div>)}</div>
       <datalist id="exercise-library-options">{library.map(item => <option key={item.id} value={item.name}>{item.kind}</option>)}</datalist>
-      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', exerciseId: null, sets: 3, targetReps: 8 }])}>+ Add exercise</button>
+      <button type="button" className="button-quiet mt-3" disabled={exercises.length >= 20} onClick={() => setExercises(current => [...current, { name: '', exerciseId: null, options: [{ name: '', exerciseId: null }], sets: 3, targetReps: 8 }])}>+ Add slot</button>
       <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Cancel</button><button className="button-primary" disabled={busy}>{busy ? 'Saving…' : 'Save routine'}</button></div>
     </form>
   </div>
