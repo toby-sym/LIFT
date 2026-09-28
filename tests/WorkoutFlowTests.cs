@@ -42,6 +42,22 @@ public sealed class WorkoutFlowTests
         Assert.Equal(HttpStatusCode.Created, create.StatusCode);
         var routine = await create.Content.ReadFromJsonAsync<JsonElement>();
         var routineId = routine.GetProperty("id").GetString();
+        var linkedExerciseId = routine.GetProperty("exercises")[0].GetProperty("exerciseId").GetString();
+
+        var library = await alice.GetFromJsonAsync<JsonElement>("/api/exercises");
+        Assert.Single(library.EnumerateArray());
+        Assert.Equal(linkedExerciseId, library[0].GetProperty("id").GetString());
+        Assert.Equal("strength", library[0].GetProperty("kind").GetString());
+
+        var duplicateExercise = await alice.PostAsJsonAsync("/api/exercises", new { name = " bench PRESS ", kind = "strength" });
+        Assert.Equal(HttpStatusCode.Conflict, duplicateExercise.StatusCode);
+        var bodyweightExercise = await alice.PostAsJsonAsync("/api/exercises", new { name = "Pull-up", kind = "bodyweight" });
+        Assert.Equal(HttpStatusCode.Created, bodyweightExercise.StatusCode);
+        var bodyweight = await bodyweightExercise.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("bodyweight", bodyweight.GetProperty("kind").GetString());
+        var renameExercise = await alice.PutAsJsonAsync($"/api/exercises/{bodyweight.GetProperty("id").GetString()}", new { name = "Chin-up", kind = "bodyweight" });
+        Assert.Equal(HttpStatusCode.OK, renameExercise.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/exercises/{bodyweight.GetProperty("id").GetString()}")).StatusCode);
 
         var start = await alice.PostAsJsonAsync("/api/sessions", new { routineId });
         Assert.Equal(HttpStatusCode.Created, start.StatusCode);
@@ -77,6 +93,7 @@ public sealed class WorkoutFlowTests
         using var bob = factory.CreateClient();
         await RegisterAndSignIn(bob, "bob@example.com");
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/routines")).EnumerateArray());
+        Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/exercises")).EnumerateArray());
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/sessions/history")).EnumerateArray());
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsJsonAsync("/api/sessions", new { routineId })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/routines/{routineId}", new

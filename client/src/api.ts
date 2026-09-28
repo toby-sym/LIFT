@@ -1,6 +1,16 @@
+export type ExerciseKind = 'strength' | 'bodyweight' | 'cardio'
+
+export type ExerciseDefinition = {
+  id: string
+  name: string
+  kind: ExerciseKind
+  createdAt: string
+}
+
 export type RoutineExercise = {
   id: string
   name: string
+  exerciseId: string | null
   sets: number
   targetReps: number
 }
@@ -28,18 +38,18 @@ export type WorkoutSession = {
   startedAt: string
   completedAt: string | null
   notes: string
-  exercises: { id: string; name: string; sets: WorkoutSet[] }[]
+  exercises: { id: string; name: string; exerciseId: string | null; sets: WorkoutSet[] }[]
 }
 
 export type Stats = {
   workouts: number
   weeklySets: number
-  bests: { exercise: string; weightKg: number }[]
+  bests: { exerciseId: string | null; exercise: string; weightKg: number }[]
 }
 
 export type RoutineInput = {
   name: string
-  exercises: { name: string; sets: number; targetReps: number }[]
+  exercises: { name: string; exerciseId?: string | null; sets: number; targetReps: number }[]
 }
 
 export class ApiError extends Error {
