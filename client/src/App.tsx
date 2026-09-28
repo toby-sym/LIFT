@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError, json, request, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
 
-type Page = 'today' | 'routines' | 'history'
+type Page = 'today' | 'routines' | 'progress' | 'history'
 type Account = { email: string }
 
 const dateLabel = (value: string) => new Intl.DateTimeFormat(undefined, {
@@ -134,36 +134,44 @@ function App() {
   if (startupError) return <div className="flex min-h-screen items-center justify-center p-6"><div className="card max-w-md p-8 text-center"><h1 className="text-2xl font-black">Could not connect to LIFT</h1><p className="mt-3 text-sm text-muted">Check that the API and database are running, then try again.</p><button className="button-primary mt-6" onClick={() => window.location.reload()}>Try again</button></div></div>
   if (!account) return <AuthScreen onSignedIn={signedIn} />
 
+  const navItems = [['today', 'Today'], ['routines', 'Routines'], ['progress', 'Progress'], ['history', 'History']] as const
+  const pageTitle = page === 'today' ? 'Train with intention.' : page === 'routines' ? 'Your routines.' : page === 'progress' ? 'See your progress.' : 'Training history.'
+
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 md:px-8">
-          <button onClick={() => setPage('today')} className="flex items-center gap-2 text-2xl font-black tracking-[-.08em]" aria-label="LIFT home">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-ink text-base text-accent">L</span>LIFT<span className="text-accent">.</span>
-          </button>
-          <div className="flex items-center gap-3">
-            <span className="hidden max-w-52 truncate text-sm text-muted sm:block">{account.email}</span>
-            <button className="text-sm font-semibold text-muted hover:text-ink" onClick={signOut} disabled={busy}>Sign out</button>
-          </div>
-        </div>
-      </header>
-
-      <main className="mx-auto max-w-6xl px-5 pb-20 pt-7 md:px-8 md:pt-10">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-5">
-          <div>
-            <p className="eyebrow mb-2">Your training space</p>
-            <h1 className="text-4xl font-black tracking-[-.055em] md:text-5xl">{page === 'today' ? 'Make today count.' : page === 'routines' ? 'Your routines.' : 'Your progress.'}</h1>
-          </div>
-          <button className="button-accent" onClick={() => setEditing('new')}>+ New routine</button>
-        </div>
-
-        <nav className="mb-7 flex gap-1 overflow-x-auto border-b border-line" aria-label="Main navigation">
-          {([['today', 'Today'], ['routines', 'Routines'], ['history', 'History']] as const).map(([id, label]) => (
-            <button key={id} onClick={() => setPage(id)} className={`whitespace-nowrap border-b-2 px-5 py-3 text-sm font-semibold transition ${page === id ? 'border-ink text-ink' : 'border-transparent text-muted hover:text-ink'}`}>
-              {label}{id === 'today' && active ? <span className="ml-2 inline-block h-2 w-2 rounded-full bg-[#83b729]" /> : null}
-            </button>
-          ))}
+    <div className="app-shell">
+      <aside className="app-rail">
+        <button onClick={() => setPage('today')} className="brand-lockup" aria-label="LIFT home">
+          <span className="brand-mark">L</span><span>LIFT<span className="brand-period">.</span></span>
+        </button>
+        <p className="rail-label">TRAINING</p>
+        <nav className="rail-nav" aria-label="Main navigation">
+          {navItems.map(([id, label]) => <button key={id} onClick={() => setPage(id)} className={`rail-link ${page === id ? 'is-active' : ''}`} aria-current={page === id ? 'page' : undefined}>
+            <span className={`nav-indicator ${id === 'today' && active ? 'has-workout' : ''}`} />{label}
+          </button>)}
         </nav>
+        <div className="rail-account">
+          <span className="account-avatar" aria-hidden="true">{account.email.slice(0, 1).toUpperCase()}</span>
+          <span className="account-email">{account.email}</span>
+          <button className="sign-out" onClick={signOut} disabled={busy}>Sign out</button>
+        </div>
+      </aside>
+
+      <div className="app-main">
+        <header className="mobile-topbar">
+          <button onClick={() => setPage('today')} className="brand-lockup" aria-label="LIFT home">
+            <span className="brand-mark">L</span><span>LIFT<span className="brand-period">.</span></span>
+          </button>
+          <span className="mobile-avatar" title={account.email}>{account.email.slice(0, 1).toUpperCase()}</span>
+        </header>
+
+        <main className="page-wrap">
+          <div className="page-heading">
+            <div>
+              <p className="eyebrow mb-2">YOUR TRAINING SPACE</p>
+              <h1 className="page-title">{pageTitle}</h1>
+            </div>
+            <button className="button-accent" onClick={() => setEditing('new')}>+ New routine</button>
+          </div>
 
         {error && <div role="alert" className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
 
@@ -172,8 +180,16 @@ function App() {
           onFinish={finishWorkout} onDiscard={discardWorkout} />}
         {page === 'routines' && <RoutinesPage routines={routines} busy={busy} hasActive={Boolean(active)} onStart={startWorkout}
           onEdit={setEditing} onDelete={deleteRoutine} onNew={() => setEditing('new')} />}
-        {page === 'history' && <HistoryPage history={history} stats={stats} />}
-      </main>
+        {page === 'progress' && <ProgressPage stats={stats} />}
+        {page === 'history' && <HistoryPage history={history} />}
+        </main>
+      </div>
+
+      <nav className="mobile-nav" aria-label="Main navigation">
+        {navItems.map(([id, label]) => <button key={id} onClick={() => setPage(id)} className={`mobile-nav-link ${page === id ? 'is-active' : ''}`} aria-current={page === id ? 'page' : undefined}>
+          <span className={`mobile-nav-dot ${id === 'today' && active ? 'has-workout' : ''}`} />{label}
+        </button>)}
+      </nav>
 
       {editing && <RoutineEditor routine={editing === 'new' ? null : editing} busy={busy}
         onClose={() => setEditing(null)} onSave={saveRoutine} />}
@@ -330,7 +346,18 @@ function RoutinesPage({ routines, busy, hasActive, onStart, onEdit, onDelete, on
   </div>)}</div>
 }
 
-function HistoryPage({ history, stats }: { history: WorkoutSession[]; stats: Stats }) {
+function ProgressPage({ stats }: { stats: Stats }) {
+  return <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,.7fr)]">
+    <div className="grid gap-4 sm:grid-cols-2">
+      <div className="card metric-card"><p className="eyebrow">Completed workouts</p><p className="metric-value">{stats.workouts}</p><p className="metric-caption">All time</p></div>
+      <div className="card metric-card"><p className="eyebrow">Work sets</p><p className="metric-value">{stats.weeklySets}</p><p className="metric-caption">This week</p></div>
+      <div className="card sm:col-span-2 p-6"><p className="eyebrow">A note on progress</p><h2 className="mt-3 text-xl font-black">Small steps add up.</h2><p className="mt-2 max-w-xl text-sm leading-6 text-muted">Keep logging your training. Exercise trends and personal records will build from the work you record here.</p></div>
+    </div>
+    <div className="card p-6"><p className="eyebrow">Heaviest recorded sets</p>{stats.bests.length ? <div className="mt-4 divide-y divide-line">{stats.bests.map(best => <div className="flex justify-between gap-3 py-3 text-sm" key={best.exercise}><span className="font-semibold">{best.exercise}</span><span className="whitespace-nowrap font-black">{best.weightKg} kg</span></div>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">Your best lifts will appear as you log completed sets.</p>}</div>
+  </div>
+}
+
+function HistoryPage({ history }: { history: WorkoutSession[] }) {
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
     <div><h2 className="mb-4 text-xl font-black">Recent workouts</h2>
       {history.length ? <div className="space-y-3">{history.map(session => <details className="card group p-5" key={session.id}>
@@ -339,9 +366,6 @@ function HistoryPage({ history, stats }: { history: WorkoutSession[]; stats: Sta
           {session.notes && <p className="rounded-xl bg-paper p-3 text-sm text-muted">{session.notes}</p>}</div>
       </details>)}</div> : <EmptyState title="No finished workouts yet" body="Finish a session to see it here." />}
     </div>
-    <aside className="space-y-4"><div className="card p-6"><p className="eyebrow">Completed workouts</p><p className="mt-3 text-5xl font-black">{stats.workouts}</p></div>
-      <div className="card p-6"><p className="eyebrow">Exercise bests</p>{stats.bests.length ? <div className="mt-4 divide-y divide-line">{stats.bests.map(best => <div className="flex justify-between gap-3 py-3 text-sm" key={best.exercise}><span className="font-semibold">{best.exercise}</span><span className="whitespace-nowrap font-black">{best.weightKg} kg</span></div>)}</div> : <p className="mt-4 text-sm text-muted">Your best lifts will appear as you log sets.</p>}</div>
-    </aside>
   </div>
 }
 
