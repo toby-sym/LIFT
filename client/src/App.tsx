@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { ApiError, json, request, type BodyweightEntry, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet } from './api'
+import { ApiError, json, request, type BodyweightEntry, type ExerciseDefinition, type ExerciseKind, type Routine, type RoutineInput, type Stats, type WorkoutSession, type WorkoutSet, type WorkoutSetInput } from './api'
 
 type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 type Account = { email: string }
@@ -156,7 +156,7 @@ function App() {
     })
   }
 
-  async function saveSet(sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) {
+  async function saveSet(sessionId: string, setId: string, value: WorkoutSetInput) {
     await run(async () => {
       setActive(await request<WorkoutSession>(`/api/sessions/${sessionId}/sets/${setId}`, {
         method: 'PUT', body: json(value),
@@ -318,7 +318,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
 function TodayPage({ active, routines, stats, busy, onStart, onNew, onSaveSet, onSaveNotes, onChooseExercise, onFinish, onDiscard }: {
   active: WorkoutSession | null; routines: Routine[]; stats: Stats; busy: boolean
   onStart: (routine: Routine) => void; onNew: () => void
-  onSaveSet: (sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) => void
+  onSaveSet: (sessionId: string, setId: string, value: WorkoutSetInput) => void
   onSaveNotes: (sessionId: string, notes: string) => void
   onChooseExercise: (sessionId: string, workoutExerciseId: string, exerciseId: string) => void
   onFinish: (id: string, notes: string) => void; onDiscard: (id: string) => void
@@ -350,7 +350,7 @@ function TodayPage({ active, routines, stats, busy, onStart, onNew, onSaveSet, o
 
 function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise, onFinish, onDiscard }: {
   session: WorkoutSession; busy: boolean
-  onSaveSet: (sessionId: string, setId: string, value: { weightKg: number | null; reps: number | null; completed: boolean }) => void
+  onSaveSet: (sessionId: string, setId: string, value: WorkoutSetInput) => void
   onSaveNotes: (sessionId: string, notes: string) => void
   onChooseExercise: (sessionId: string, workoutExerciseId: string, exerciseId: string) => void
   onFinish: (id: string, notes: string) => void; onDiscard: (id: string) => void
@@ -366,6 +366,7 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
         <div className="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold">{completed} / {total} sets</div>
       </div>
       <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-accent transition-all" style={{ width: `${total ? completed / total * 100 : 0}%` }} /></div>
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-white/75"><span>{session.metrics.totalReps} total reps</span><span>Tonnage: {session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg{!session.metrics.tonnageComplete ? ' · partial' : ''}</span></div>
     </div>
     {session.exercises.map((exercise, index) => <div className="card p-5 md:p-6" key={exercise.id}>
       <div className="mb-5 flex items-center gap-3"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">{String(index + 1).padStart(2, '0')}</span><div><h3 className="text-lg font-black">{exercise.slotName}</h3>{exercise.exerciseId && exercise.name !== exercise.slotName && <p className="mt-1 text-xs font-semibold text-muted">Using {exercise.name}</p>}</div></div>
@@ -373,7 +374,7 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
         <option value="" disabled>Select an option</option>{exercise.options.map(option => <option key={option.id} value={option.exerciseId ?? ''}>{option.name}</option>)}
       </select></label>}
       {!exercise.exerciseId && <p className="mb-3 rounded-lg bg-[#fff8e7] px-3 py-2 text-sm text-[#74510d]">Choose an exercise option to unlock set logging.</p>}
-      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.completed}`} set={set} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
+      <div className="space-y-2">{exercise.sets.map(set => <SetRow key={`${exercise.exerciseId}:${set.id}:${set.weightKg}:${set.reps}:${set.rpe}:${set.rir}:${set.completed}`} set={set} kind={exercise.kind} busy={busy} disabled={!exercise.exerciseId} onSave={value => onSaveSet(session.id, set.id, value)} />)}</div>
     </div>)}
     <div className="card p-5 md:p-6"><label className="block text-sm font-bold" htmlFor="workout-notes">Workout notes</label>
       <textarea id="workout-notes" className="field mt-3 min-h-28 resize-y" maxLength={2000} value={notes} onChange={e => setNotes(e.target.value)} placeholder="How did it feel?" />
@@ -385,19 +386,25 @@ function WorkoutPanel({ session, busy, onSaveSet, onSaveNotes, onChooseExercise,
   </div>
 }
 
-function SetRow({ set, busy, disabled, onSave }: { set: WorkoutSet; busy: boolean; disabled: boolean; onSave: (value: { weightKg: number | null; reps: number | null; completed: boolean }) => void }) {
+function SetRow({ set, kind, busy, disabled, onSave }: { set: WorkoutSet; kind: ExerciseKind; busy: boolean; disabled: boolean; onSave: (value: WorkoutSetInput) => void }) {
   const [weight, setWeight] = useState(set.weightKg?.toString() ?? '')
   const [reps, setReps] = useState(set.reps?.toString() ?? '')
+  const [rpe, setRpe] = useState(set.rpe?.toString() ?? '')
+  const [rir, setRir] = useState(set.rir?.toString() ?? '')
   const value = (completed: boolean) => ({
     weightKg: weight === '' ? null : Number(weight),
     reps: reps === '' ? null : Number(reps),
+    rpe: rpe === '' ? null : Number(rpe),
+    rir: rir === '' ? null : Number(rir),
     completed,
   })
 
-  return <div className={`grid grid-cols-[32px_1fr_1fr] items-end gap-2 rounded-xl p-3 sm:grid-cols-[42px_1fr_1fr_auto] ${set.completed ? 'bg-[#f2f9e7]' : 'bg-paper'}`}>
+  return <div className={`grid grid-cols-[28px_1fr_1fr] items-end gap-2 rounded-xl p-3 sm:grid-cols-[36px_repeat(4,minmax(62px,1fr))_auto] ${set.completed ? 'bg-[#f2f9e7]' : 'bg-paper'}`}>
     <div className="pb-2 text-center text-sm font-black text-muted">{set.order + 1}</div>
-    <label className="text-xs font-semibold text-muted">Weight (kg)<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="9999.99" step="0.25" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} disabled={disabled} /></label>
+    <label className="text-xs font-semibold text-muted">{kind === 'bodyweight' ? 'Added load (kg)' : 'Weight (kg)'}<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="9999.99" step="0.25" inputMode="decimal" value={weight} onChange={e => setWeight(e.target.value)} disabled={disabled} placeholder={kind === 'bodyweight' ? 'Optional' : undefined} /></label>
     <label className="text-xs font-semibold text-muted">Reps <span className="font-normal">/ {set.targetReps}</span><input className="field mt-1 !bg-white !py-2" type="number" min="0" max="1000" step="1" inputMode="numeric" value={reps} onChange={e => setReps(e.target.value)} disabled={disabled} /></label>
+    <label className="col-span-1 text-xs font-semibold text-muted">RPE<input className="field mt-1 !bg-white !py-2" type="number" min="1" max="10" step="0.5" inputMode="decimal" value={rpe} onChange={e => setRpe(e.target.value)} disabled={disabled} placeholder="—" /></label>
+    <label className="col-span-1 text-xs font-semibold text-muted">RIR<input className="field mt-1 !bg-white !py-2" type="number" min="0" max="10" step="0.5" inputMode="decimal" value={rir} onChange={e => setRir(e.target.value)} disabled={disabled} placeholder="—" /></label>
     <div className="col-span-3 flex justify-end gap-2 sm:col-span-1">
       <button className="button-quiet !px-3 !py-2" disabled={busy || disabled} onClick={() => onSave(value(set.completed))}>Save</button>
       <button className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-ink text-white' : 'bg-accent text-ink'}`} disabled={busy || disabled} onClick={() => onSave(value(!set.completed))}>{set.completed ? '✓ Done' : 'Complete'}</button>
@@ -508,11 +515,23 @@ function ProgressPage({ stats, entries, onSave, onDelete }: {
 }
 
 function HistoryPage({ history }: { history: WorkoutSession[] }) {
+  function describeSet(exercise: WorkoutSession['exercises'][number], set: WorkoutSet) {
+    if (exercise.kind === 'bodyweight') {
+      const added = set.weightKg ?? 0
+      const load = set.bodyMassKg == null
+        ? added > 0 ? `+ ${added} kg added (body mass not recorded)` : 'Bodyweight (body mass not recorded)'
+        : `${set.bodyMassKg} kg body mass${added > 0 ? ` + ${added} kg added` : ''}`
+      return `${load} × ${set.reps}`
+    }
+    if (exercise.kind === 'cardio') return `${set.reps ?? '—'} reps`
+    return `${set.weightKg} kg × ${set.reps}`
+  }
+
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
     <div><h2 className="mb-4 text-xl font-black">Recent workouts</h2>
       {history.length ? <div className="space-y-3">{history.map(session => <details className="card group p-5" key={session.id}>
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><div><p className="text-xs font-semibold text-muted">{dateLabel(session.completedAt!)}</p><h3 className="mt-1 text-lg font-black">{session.name}</h3><p className="mt-1 text-sm text-muted">{session.exercises.reduce((sum, x) => sum + x.sets.filter(s => s.completed).length, 0)} completed sets</p></div><span className="text-2xl text-muted group-open:rotate-45">+</span></summary>
-        <div className="mt-5 border-t border-line pt-4">{session.exercises.map(exercise => <div key={exercise.id} className="mb-4"><h4 className="text-sm font-bold">{exercise.name}</h4><p className="mt-1 text-sm text-muted">{exercise.sets.filter(s => s.completed).map(s => `${s.weightKg} kg × ${s.reps}`).join(' · ') || 'No completed sets'}</p></div>)}
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><div><p className="text-xs font-semibold text-muted">{dateLabel(session.completedAt!)}</p><h3 className="mt-1 text-lg font-black">{session.name}</h3><p className="mt-1 text-sm text-muted">{session.exercises.reduce((sum, x) => sum + x.sets.filter(s => s.completed).length, 0)} completed sets · {session.metrics.totalReps} reps · {session.metrics.tonnageKg.toLocaleString(undefined, { maximumFractionDigits: 1 })} kg tonnage{!session.metrics.tonnageComplete ? ' (partial)' : ''}</p></div><span className="text-2xl text-muted group-open:rotate-45">+</span></summary>
+        <div className="mt-5 border-t border-line pt-4">{session.exercises.map(exercise => <div key={exercise.id} className="mb-4"><h4 className="text-sm font-bold">{exercise.name}</h4><p className="mt-1 text-sm text-muted">{exercise.sets.filter(s => s.completed).map(s => describeSet(exercise, s)).join(' · ') || 'No completed sets'}</p></div>)}
           {session.notes && <p className="rounded-xl bg-paper p-3 text-sm text-muted">{session.notes}</p>}</div>
       </details>)}</div> : <EmptyState title="No finished workouts yet" body="Finish a session to see it here." />}
     </div>

@@ -245,6 +245,7 @@ public static class LiftEndpoints
                     RoutineSlotId = exercise.Id,
                     SlotName = exercise.Name,
                     ExerciseDefinitionId = exercise.Options.Count == 0 ? exercise.ExerciseDefinitionId : null,
+                    Kind = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Kind ?? "strength" : "strength",
                     Name = exercise.Options.Count == 0 ? exercise.ExerciseDefinition?.Name ?? exercise.Name : exercise.Name,
                     Options = new[]
                     {
@@ -295,12 +296,16 @@ public static class LiftEndpoints
                 {
                     set.WeightKg = null;
                     set.Reps = null;
+                    set.BodyMassKg = null;
+                    set.Rpe = null;
+                    set.Rir = null;
                     set.Completed = false;
                 }
             }
             exercise.ExerciseDefinitionId = choice.ExerciseDefinitionId;
             exercise.ExerciseDefinition = choice.ExerciseDefinition;
             exercise.Name = choice.Name;
+            exercise.Kind = choice.Kind;
             await db.SaveChangesAsync();
             return Results.Ok(ToResponse(session));
         });
@@ -320,9 +325,24 @@ public static class LiftEndpoints
             if (exercise.ExerciseDefinitionId is null)
                 return Results.Conflict(new { message = "Choose an exercise option before logging sets." });
 
+            if (input.Completed && exercise.Kind == "strength" && input.WeightKg is null)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["weightKg"] = ["Enter an external load to complete this strength set."] });
+            if (input.Completed && (exercise.Kind is "strength" or "bodyweight") && (input.Reps is null or < 1))
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["reps"] = ["Enter at least one rep to complete this set."] });
+
             set.WeightKg = input.WeightKg;
             set.Reps = input.Reps;
+            set.Rpe = input.Rpe;
+            set.Rir = input.Rir;
             set.Completed = input.Completed;
+            set.BodyMassKg = input.Completed && exercise.Kind == "bodyweight"
+                ? await db.BodyweightEntries.AsNoTracking()
+                    .Where(x => x.OwnerId == Owner(user))
+                    .OrderByDescending(x => x.MeasuredOn)
+                    .ThenByDescending(x => x.CreatedAt)
+                    .Select(x => (decimal?)x.WeightKg)
+                    .FirstOrDefaultAsync()
+                : null;
             await db.SaveChangesAsync();
             return Results.Ok(ToResponse(session));
         });
@@ -542,9 +562,38 @@ public static class LiftEndpoints
             errors["weightKg"] = ["Weight must be between 0 and 9,999.99 kg."];
         if (input.Reps is < 0 or > 1000)
             errors["reps"] = ["Reps must be between 0 and 1,000."];
-        if (input.Completed && (input.Reps is null or < 1 || input.WeightKg is null))
-            errors["completed"] = ["Enter weight and at least one rep to complete a set."];
+        if (input.Rpe is < 1 or > 10 || input.Rpe.HasValue && input.Rpe.Value * 2 % 1 != 0)
+            errors["rpe"] = ["RPE must use half-point steps from 1 to 10."];
+        if (input.Rir is < 0 or > 10 || input.Rir.HasValue && input.Rir.Value * 2 % 1 != 0)
+            errors["rir"] = ["RIR must use half-point steps from 0 to 10."];
+        if (input.Rpe.HasValue && input.Rir.HasValue && input.Rpe.Value + input.Rir.Value != 10)
+            errors["effort"] = ["RPE and RIR must add up to 10 when both are entered."];
         return errors;
+    }
+
+    private static object SessionMetrics(WorkoutSession session)
+    {
+        var completed = session.Exercises
+            .Where(exercise => exercise.Kind != "cardio")
+            .SelectMany(exercise => exercise.Sets.Where(set => set.Completed)
+                .Select(set => new { exercise.Kind, set.WeightKg, set.BodyMassKg, set.Reps }))
+            .ToList();
+        var totalReps = completed.Sum(x => x.Reps ?? 0);
+        var tonnageKg = 0m;
+        var tonnageComplete = true;
+        foreach (var set in completed)
+        {
+            decimal? load = set.Kind == "bodyweight"
+                ? set.BodyMassKg.HasValue ? set.BodyMassKg.Value + (set.WeightKg ?? 0m) : null
+                : set.WeightKg;
+            if (!load.HasValue)
+            {
+                tonnageComplete = false;
+                continue;
+            }
+            tonnageKg += load.Value * (set.Reps ?? 0);
+        }
+        return new { totalReps, tonnageKg, tonnageComplete };
     }
 
     private static object ToResponse(Routine routine) => new
@@ -575,16 +624,17 @@ public static class LiftEndpoints
         session.StartedAt,
         session.CompletedAt,
         session.Notes,
+        metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
         {
-            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId,
+            x.Id, x.Name, slotName = x.SlotName ?? x.Name, exerciseId = x.ExerciseDefinitionId, kind = x.Kind,
             options = x.Options.OrderBy(o => o.Order).Select(o => new
             {
                 o.Id, exerciseId = o.ExerciseDefinitionId, o.Name, o.Kind
             }),
             sets = x.Sets.OrderBy(s => s.Order).Select(s => new
             {
-                s.Id, s.Order, s.TargetReps, s.WeightKg, s.Reps, s.Completed
+                s.Id, s.Order, s.TargetReps, s.WeightKg, s.BodyMassKg, s.Reps, s.Rpe, s.Rir, s.Completed
             })
         })
     };
@@ -613,5 +663,5 @@ public sealed record BodyweightInput(decimal WeightKg, DateOnly MeasuredOn);
 public sealed record RoutineInput(string Name, List<ExerciseInput> Exercises);
 public sealed record StartSessionInput(Guid RoutineId);
 public sealed record ExerciseChoiceInput(Guid ExerciseId, bool ClearLoggedSets = false);
-public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed);
+public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null);
 public sealed record NotesInput(string Notes);
