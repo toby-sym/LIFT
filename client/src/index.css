@@ -419,21 +419,10 @@ html {
 .workspace-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   height: 73px;
   padding: 0 38px;
   border-bottom: 1px solid #2b332d;
-}
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  font-size: 11px;
-  color: #98a58d;
-}
-.breadcrumb strong {
-  color: #cbd5c2;
-  font-weight: 500;
 }
 .topbar-right {
   display: flex;
@@ -2266,6 +2255,7 @@ html {
     display: inline-flex;
   }
   .workspace-topbar {
+    justify-content: space-between;
     height: 67px;
     padding: 0 24px;
   }
@@ -2279,9 +2269,6 @@ html {
   .brand-period {
     top: -10px;
     font-size: 8px;
-  }
-  .breadcrumb {
-    display: none;
   }
   .mobile-signout {
     display: grid;

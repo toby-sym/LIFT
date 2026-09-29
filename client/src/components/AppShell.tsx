@@ -154,13 +154,6 @@ export function AppShell({
           >
             <Brand />
           </button>
-          <div className="breadcrumb">
-            <span>Workspace</span>
-            <Icon name="chevron" size={12} />
-            <strong>
-              {navigation.find((item) => item.id === page)?.label}
-            </strong>
-          </div>
           <div className="topbar-right">
             <span className="today-date">
               <Icon name="routine" size={15} />
