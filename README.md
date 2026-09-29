@@ -26,6 +26,15 @@ Open <http://localhost:5173>. Vite forwards account and API requests to the C# s
 
 ## Features
 
+### Training studio interface
+
+- A responsive dark interface with lime accents, locally hosted Manrope typography, custom icons and a redesigned sign-in screen.
+- Animated page entrances, statistic counters, chart lines and bars, an orbital hero illustration, hover feedback, workout progress rings and completion notifications. Motion respects the device's reduced-motion preference.
+- An interactive activity chart with 7-day and 28-day views, recent sessions and a 12-week training calendar. Activity views use the latest 30 completed workouts returned by the history API; their captions state this limit.
+- Search and type filters for the exercise library, desktop navigation and a fixed mobile navigation bar.
+- Native dialogs with keyboard focus containment, Escape dismissal and validation messages inside the form.
+- A shared rest countdown that keeps running when a workout set is saved and accounts for time spent in a background tab.
+
 ### Routines and exercise choices
 
 - Create routines with up to 20 ordered exercise slots, set and rep targets, a warm-up / working / cool-down section, and an optional target tempo such as `3-1-1`.
@@ -71,9 +80,14 @@ dotnet tool run dotnet-ef database update --project server --startup-project ser
 dotnet test tests/Lift.Api.Tests.csproj --configuration Release
 npm run build --prefix client
 npm run lint --prefix client
+npm test --prefix client
 ```
 
 The API tests use an in-memory SQLite database for account ownership, routine alternatives, workout logging and feature calculations. Production migrations target PostgreSQL.
+
+The frontend tests use Vitest, React Testing Library and jsdom with mocked API responses. They cover starting a workout, searching and filtering movements, saving routine alternatives, dialog errors and cancellation, selecting an exercise, activity periods, and preserving a rest timer across set saves. These interaction tests do not replace visual checks in a browser.
+
+Manrope is bundled under the SIL Open Font License in `client/public/fonts/OFL.txt`. The interface uses CSS and SVG animation without an additional runtime animation library.
 
 ## Feature branch history
 
@@ -92,7 +106,8 @@ Features were developed on focused branches and merged into local `main` with me
 | `feature/exercise-groups` | Group routine exercises into training sets |
 | `feature/records-and-progress` | Track personal records and exercise progress |
 | `feature/session-comparison` | Compare repeated routine sessions |
+| `feature/animated-training-interface` | Rebuild the frontend as an animated training studio |
 
 ## GitHub Actions
 
-`.github/workflows/ci.yml` runs on every push and pull request, and can also be started manually from GitHub Actions. GitHub-hosted Ubuntu runners start a temporary PostgreSQL service, apply the EF Core migrations, run the API tests, lint and build the frontend, then build the combined Docker image. A push to the repository's default branch also uploads the image as a 7-day workflow artifact. This provides CI and a downloadable build without a deployment environment.
+`.github/workflows/ci.yml` runs on every push and pull request, and can also be started manually from GitHub Actions. GitHub-hosted Ubuntu runners start a temporary PostgreSQL service, apply the EF Core migrations, run the API and frontend tests, lint and build the frontend, then build the combined Docker image. A push to the repository's default branch also uploads the image as a 7-day workflow artifact. This provides CI and a downloadable build without a deployment environment.

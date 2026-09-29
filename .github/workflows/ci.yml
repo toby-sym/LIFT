@@ -64,6 +64,9 @@ jobs:
       - name: Lint frontend
         run: npm run lint --prefix client
 
+      - name: Test frontend interactions
+        run: npm test --prefix client
+
       - name: Build frontend
         run: npm run build --prefix client
 
