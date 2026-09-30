@@ -3,7 +3,8 @@ WORKDIR /src/client
 COPY client/package*.json ./
 RUN npm ci
 COPY client/ ./
-RUN npm run build
+ARG APP_VERSION=Development
+RUN VITE_APP_VERSION="${APP_VERSION}" npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS api-build
 WORKDIR /src

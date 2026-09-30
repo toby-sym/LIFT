@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Brand, Icon, type IconName } from './Studio'
 import { useLocalDay } from './dates'
+import { appVersion } from '../version'
 
 export type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 const navigation: { id: Page; label: string; icon: IconName }[] = [
@@ -51,6 +52,7 @@ export function AppShell({
   onSignOut,
   children,
   overlays,
+  version = appVersion,
 }: {
   page: Page
   email: string
@@ -61,6 +63,7 @@ export function AppShell({
   onSignOut: () => void
   children: ReactNode
   overlays: ReactNode
+  version?: string
 }) {
   const title = titles[page]
   const today = useLocalDay()
@@ -143,6 +146,9 @@ export function AppShell({
           >
             <Icon name="logout" size={18} />
           </button>
+        </div>
+        <div className="rail-version" aria-label="Application version">
+          {version}
         </div>
       </aside>
       <div className="app-main">
