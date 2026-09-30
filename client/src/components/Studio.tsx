@@ -196,8 +196,8 @@ export function TrainingOrbit({ compact = false }: { compact?: boolean }) {
         <i />
         <i />
       </div>
-      <span className="orbit-coordinate coordinate-a">EFFORT / EVERY DAY</span>
-      <span className="orbit-coordinate coordinate-b">BUILT BY YOU</span>
+      <span className="orbit-coordinate coordinate-a">TRAIN / TRACK</span>
+      <span className="orbit-coordinate coordinate-b">LIFT</span>
     </div>
   )
 }
@@ -386,8 +386,8 @@ export function ActivityCalendar({ history }: { history: WorkoutSession[] }) {
     <section className="card rhythm-card">
       <div className="section-top">
         <div>
-          <p className="eyebrow">BUILD THE HABIT</p>
-          <h2>Training rhythm</h2>
+          <p className="eyebrow">ACTIVITY</p>
+          <h2>Training days</h2>
         </div>
         <Icon name="bolt" />
       </div>

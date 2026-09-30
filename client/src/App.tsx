@@ -553,31 +553,27 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
         </div>
         <div className="auth-statement">
           <span className="hero-label">
-            <span /> A SPACE FOR YOUR STRONGER SELF
+            <span /> TRAINING TRACKER
           </span>
           <h1>
-            Show up.
+            Plan your
             <br />
-            <em>Level up.</em>
-            <br />
-            Go again.
+            <em>training.</em>
           </h1>
           <p>
-            Turn intention into progress.
-            <br />
-            Your training deserves a place like this.
+            Keep routines, workouts, and progress in one place.
           </p>
         </div>
         <TrainingOrbit />
         <div className="auth-art-footer">
-          <span>BUILT BY EFFORT. DEFINED BY YOU.</span>
+          <span>TRAINING, TRACKED.</span>
           <span>EST. 2026 ↗</span>
         </div>
       </section>
       <section className="auth-panel">
         <div className="auth-panel-label">
           <Icon name="target" size={16} />
-          <span>YOUR PERSONAL TRAINING STUDIO</span>
+          <span>PERSONAL TRAINING TRACKER</span>
         </div>
         <form onSubmit={submit} className="auth-form">
           <p className="eyebrow mb-3">Welcome to LIFT</p>
@@ -587,7 +583,7 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
           <p className="mt-2 text-sm text-muted">
             {mode === 'login'
               ? 'Pick up where you left off.'
-              : 'Start building your training history.'}
+              : 'Create an account to save your training data.'}
           </p>
           {error && (
             <div
@@ -938,7 +934,7 @@ function WorkoutPanel({
       <div className="workout-tools">
         <span>
           <Icon name="exercise" size={16} /> {session.exercises.length}{' '}
-          movements · Make every set count
+          movements
         </span>
         <RestTimer />
       </div>
@@ -2515,9 +2511,9 @@ function ExercisesPage({
                     <strong>{exercise.oneRepMaxKg}</strong> kg entered 1RM
                   </>
                 ) : exercise.kind === 'cardio' ? (
-                  'Find your pace. Build your engine.'
+                  'Cardio exercise'
                 ) : (
-                  'Ready for your next session.'
+                  'Strength exercise'
                 )}
               </p>
               <div className="exercise-tile-footer">
@@ -2540,7 +2536,7 @@ function ExercisesPage({
           title={
             exercises.length
               ? 'No matching movements'
-              : 'Your next chapter starts here'
+              : 'No exercises yet'
           }
           body={
             exercises.length
@@ -3259,7 +3255,7 @@ function EmptyState({
           <Icon name="exercise" size={32} />
         </div>
       </div>
-      <p className="eyebrow">ROOM FOR SOMETHING GREAT</p>
+      <p className="eyebrow">GETTING STARTED</p>
       <h2>{title}</h2>
       <p>{body}</p>
       {action && (
