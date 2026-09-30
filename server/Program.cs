@@ -27,8 +27,9 @@ builder.Services.ConfigureApplicationCookie(options =>
 
 var app = builder.Build();
 
-await using (var scope = app.Services.CreateAsyncScope())
+if (app.Environment.IsProduction())
 {
+    await using var scope = app.Services.CreateAsyncScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<LiftDbContext>();
     await dbContext.Database.MigrateAsync();
 }
