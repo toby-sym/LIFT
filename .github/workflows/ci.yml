@@ -34,6 +34,21 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Resolve application version
+        id: app-version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            if [[ "$GITHUB_REF_NAME" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::Release tags must use vMAJOR.MINOR.PATCH."
+              exit 1
+            fi
+          else
+            echo "value=Development" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -65,13 +80,38 @@ jobs:
         run: npm run lint --prefix client
 
       - name: Test frontend interactions
+        id: frontend-tests
+        continue-on-error: true
         run: npm test --prefix client
 
+      - name: Write frontend test summary
+        if: always()
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs')
+          const report = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/lift-vitest-report.json`, 'utf8'))
+          const summary = [
+            `Test Files: ${report.numPassedTestSuites}/${report.numTotalTestSuites} Passed`,
+            '',
+            `Test Results: ${report.numPassedTests}/${report.numTotalTests} Passed`,
+            '',
+          ].join('\n')
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary)
+          NODE
+
+      - name: Check frontend test result
+        if: steps.frontend-tests.outcome == 'failure'
+        run: exit 1
+
       - name: Build frontend
-        run: npm run build --prefix client
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.value }}
+        run: VITE_APP_VERSION="$APP_VERSION" npm run build --prefix client
 
       - name: Build application image
-        run: docker build --tag lift:${GITHUB_SHA} .
+        env:
+          APP_VERSION: ${{ steps.app-version.outputs.value }}
+        run: docker build --build-arg APP_VERSION="$APP_VERSION" --tag lift:${GITHUB_SHA} .
 
       - name: Save image artifact
         if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch

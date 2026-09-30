@@ -7,5 +7,11 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     restoreMocks: true,
+    reporters: process.env.GITHUB_ACTIONS === 'true'
+      ? ['default', 'json']
+      : undefined,
+    outputFile: process.env.GITHUB_ACTIONS === 'true'
+      ? { json: `${process.env.RUNNER_TEMP}/lift-vitest-report.json` }
+      : undefined,
   },
 })
