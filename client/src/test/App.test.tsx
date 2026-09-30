@@ -204,7 +204,7 @@ beforeEach(() => {
 
 async function openApp() {
   render(<App />)
-  await screen.findByRole('heading', { name: 'Make today count.' })
+  await screen.findByRole('heading', { name: 'Training overview' })
 }
 function navigate(label: string) {
   fireEvent.click(

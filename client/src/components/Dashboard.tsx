@@ -38,12 +38,8 @@ export function Dashboard({
             <span className="live-badge">
               <i /> LIVE SESSION
             </span>
-            <h2>
-              One set
-              <br />
-              at a time.
-            </h2>
-            <p>Stay present. Log your effort. Let the progress follow.</p>
+            <h2>Session notes</h2>
+            <p>Completed sets are saved as you go.</p>
             <div className="session-guide-mark">
               <Icon name="target" size={96} />
             </div>
@@ -61,16 +57,15 @@ export function Dashboard({
         <div className="hero-grid" aria-hidden="true" />
         <div className="hero-copy">
           <span className="hero-label">
-            <span /> YOUR NEXT SESSION STARTS HERE
+            <span /> TRAINING OVERVIEW
           </span>
           <h2>
-            Put in the work.
+            Your training,
             <br />
-            <em>Own your progress.</em>
+            <em>at a glance.</em>
           </h2>
           <p>
-            Your routines. Your pace. A stronger version of you,
-            <br className="hidden sm:block" /> built one session at a time.
+            Review recent sessions, track activity, and start a workout.
           </p>
           <div className="hero-actions">
             <button
@@ -79,7 +74,7 @@ export function Dashboard({
               onClick={() => (routines.length ? onStart(routines[0]) : onNew())}
             >
               <Icon name={routines.length ? 'play' : 'plus'} size={17} />
-              {routines.length ? 'Start a workout' : 'Build your first routine'}
+              {routines.length ? 'Start a workout' : 'Create a routine'}
               <Icon name="arrow" size={18} />
             </button>
             {routines.length > 0 && (
@@ -94,27 +89,27 @@ export function Dashboard({
         </div>
         <TrainingOrbit />
         <span className="hero-index" aria-hidden="true">
-          01 — SHOW UP. GO AGAIN.
+          01 — TRAINING
         </span>
       </section>
       <div className="stats-row">
         <StatCard
           label="Sets this week"
           value={stats.weeklySets}
-          caption="Every rep is an investment"
+          caption="Completed sets this week"
           icon="bolt"
         />
         <StatCard
           label="Workouts completed"
           value={stats.workouts}
-          caption="Your effort, on the record"
+          caption="Total completed sessions"
           icon="trophy"
           tone="purple"
         />
         <StatCard
           label="Routines in rotation"
           value={routines.length}
-          caption="Built around the way you train"
+          caption="Available to start"
           icon="routine"
           tone="orange"
         />
@@ -175,10 +170,9 @@ export function Dashboard({
               <span>
                 <Icon name="history" size={30} />
               </span>
-              <h3>A fresh page.</h3>
+              <h3>No sessions yet</h3>
               <p>
-                Finish your first workout and start a history worth looking back
-                on.
+                Completed workouts will appear here.
               </p>
             </div>
           )}
@@ -194,7 +188,7 @@ export function Dashboard({
         <section className="routine-preview">
           <div className="section-top">
             <div>
-              <p className="eyebrow">BUILT FOR YOUR NEXT SESSION</p>
+              <p className="eyebrow">ROUTINES</p>
               <h2>Your routines</h2>
             </div>
             <button
@@ -235,7 +229,7 @@ export function Dashboard({
                 <Icon name="plus" size={24} />
               </span>
               <div>
-                <strong>Your routine. Your rules.</strong>
+                <strong>No routines yet</strong>
                 <p>Choose your movements and make a plan.</p>
               </div>
               <Icon name="arrow" />
@@ -246,9 +240,9 @@ export function Dashboard({
       </div>
       <footer className="studio-footer">
         <span>
-          LIFT <b>/</b> <span>BUILT BY EFFORT.</span>
+          LIFT <b>/</b> <span>TRAINING LOG</span>
         </span>
-        <span>Small steps. Stronger every day.</span>
+        <span>Sessions, activity, and progress.</span>
       </footer>
     </div>
   )

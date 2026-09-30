@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Brand, Icon, type IconName } from './Studio'
 import { useLocalDay } from './dates'
+import { appVersion } from '../version'
 
 export type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
 const navigation: { id: Page; label: string; icon: IconName }[] = [
@@ -15,29 +16,29 @@ const titles: Record<
   { label: string; title: string; description: string }
 > = {
   today: {
-    label: 'YOUR DAILY PERSPECTIVE',
-    title: 'Make today count.',
-    description: 'A little stronger. Every single session.',
+    label: 'OVERVIEW',
+    title: 'Training overview',
+    description: 'Your sessions, routines, and recent activity.',
   },
   routines: {
-    label: 'THE BLUEPRINT',
-    title: 'A plan with purpose.',
-    description: 'Build, refine, and find your training rhythm.',
+    label: 'TRAINING',
+    title: 'Routines',
+    description: 'Create and manage your training routines.',
   },
   exercises: {
-    label: 'YOUR MOVEMENT COLLECTION',
-    title: 'Find your next move.',
-    description: 'The building blocks of your stronger self.',
+    label: 'TRAINING',
+    title: 'Exercise library',
+    description: 'Browse and manage exercises.',
   },
   progress: {
-    label: 'PROOF OF THE WORK',
-    title: 'Look how far you’ve come.',
-    description: 'Small improvements. A bigger picture.',
+    label: 'TRAINING DATA',
+    title: 'Progress',
+    description: 'Review your training history and measurements.',
   },
   history: {
-    label: 'EVERY SESSION, REMEMBERED',
-    title: 'Your effort on record.',
-    description: 'Revisit the work that got you here.',
+    label: 'TRAINING',
+    title: 'History',
+    description: 'Review completed sessions.',
   },
 }
 
@@ -51,6 +52,7 @@ export function AppShell({
   onSignOut,
   children,
   overlays,
+  version = appVersion,
 }: {
   page: Page
   email: string
@@ -61,6 +63,7 @@ export function AppShell({
   onSignOut: () => void
   children: ReactNode
   overlays: ReactNode
+  version?: string
 }) {
   const title = titles[page]
   const today = useLocalDay()
@@ -107,9 +110,9 @@ export function AppShell({
             <Icon name="bolt" size={23} />
           </div>
           <p>
-            Built by effort.
+            Training log.
             <br />
-            <span>Defined by you.</span>
+            <span>Made for you.</span>
           </p>
           <div className="manifesto-lines" aria-hidden="true">
             {Array.from({ length: 18 }, (_, i) => (
@@ -144,6 +147,9 @@ export function AppShell({
             <Icon name="logout" size={18} />
           </button>
         </div>
+        <div className="rail-version" aria-label="Application version">
+          {version}
+        </div>
       </aside>
       <div className="app-main">
         <header className="workspace-topbar">
@@ -165,7 +171,7 @@ export function AppShell({
             </span>
             <span className="topbar-divider" />
             <span className="topbar-status">
-              <i /> {hasActive ? 'Session in progress' : 'Ready to train'}
+              <i /> {hasActive ? 'Session in progress' : 'No active session'}
             </span>
             <button
               className="mobile-signout icon-button"
