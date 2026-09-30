@@ -2,6 +2,10 @@
 
 LIFT is a personal training journal with a React, TypeScript and Tailwind frontend, an ASP.NET Core API, ASP.NET Core Identity, EF Core and PostgreSQL.
 
+## Live app
+
+[Open LIFT](https://lift.toby-sym.co.uk/) — the hosted app reflects the `release` branch.
+
 ## Run locally
 
 You need .NET 10, Node.js 24 (or a Vite compatible version), npm and PostgreSQL. The included Compose file starts a local PostgreSQL database if Docker Desktop is available.
