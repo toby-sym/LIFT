@@ -2443,6 +2443,14 @@ function HistoryEditor({ session, onClose, onRefresh }: { session: WorkoutSessio
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save set.') }
     finally { setBusy(false) }
   }
+  async function changeChoice(exercise: WorkoutSession['exercises'][number], exerciseId: string) {
+    if (exercise.exerciseId === exerciseId) return
+    if (!window.confirm('Changing the exercise clears its saved sets. Continue?')) return
+    setBusy(true); setError('')
+    try { setCurrent(await request<WorkoutSession>(`/api/sessions/${session.id}/exercises/${exercise.id}/choice`, { method: 'PUT', body: json({ exerciseId, clearLoggedSets: true }) })); await onRefresh() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not change exercise.') }
+    finally { setBusy(false) }
+  }
   async function save(event: FormEvent) {
     event.preventDefault(); setBusy(true); setError('')
     try { await request<null>(`/api/sessions/${session.id}/history`, { method: 'PUT', body: json({ name, notes, rating: rating ? Number(rating) : null, note, excludedFromStats: excluded }) }); await onRefresh(); onClose() }
@@ -2457,7 +2465,7 @@ function HistoryEditor({ session, onClose, onRefresh }: { session: WorkoutSessio
     <div className="mt-4 grid gap-3 sm:grid-cols-2"><label>Rating<select className="field mt-2" value={rating} onChange={e => setRating(e.target.value)}><option value="">No rating</option>{[1,2,3,4,5].map(n => <option key={n} value={n}>{n} / 5</option>)}</select></label><label>Reflection<input className="field mt-2" maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label></div>
     <label className="mt-5 flex items-center gap-3"><input type="checkbox" checked={!excluded} onChange={e => setExcluded(!e.target.checked)} /> Include this workout in progress and statistics</label>
     <p className="mt-5 text-sm text-muted">Save each set individually. Changes to sets take effect immediately.</p>
-    {current.exercises.map(exercise => <section key={exercise.id} className="mt-5"><h3 className="mb-3 font-bold">{exercise.name}</h3><div className="workout-exercise space-y-2">{exercise.sets.map(set => <SetRow key={`${set.id}:${set.weightKg}:${set.reps}:${set.completed}:${set.durationSeconds}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} targetHeartRateMin={exercise.targetHeartRateMin} targetHeartRateMax={exercise.targetHeartRateMax} targetResistanceLevel={exercise.targetResistanceLevel} targetRpm={exercise.targetRpm} busy={busy} disabled={false} onSave={value => saveSet(set.id, value)} />)}</div></section>)}
+    {current.exercises.map(exercise => <section key={exercise.id} className="mt-5"><h3 className="mb-3 font-bold">{exercise.slotName}</h3>{exercise.options.filter(option => option.exerciseId).length > 1 && <label className="mb-3 block text-sm">Exercise choice<select className="field mt-2" value={exercise.exerciseId ?? ""} disabled={busy} onChange={e => changeChoice(exercise, e.target.value)}><option value="" disabled>{exercise.name}</option>{exercise.options.filter(option => option.exerciseId).map(option => <option key={option.id} value={option.exerciseId!}>{option.name}</option>)}</select></label>}<div className="workout-exercise space-y-2">{exercise.sets.map(set => <SetRow key={`${set.id}:${set.weightKg}:${set.reps}:${set.completed}:${set.durationSeconds}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} targetHeartRateMin={exercise.targetHeartRateMin} targetHeartRateMax={exercise.targetHeartRateMax} targetResistanceLevel={exercise.targetResistanceLevel} targetRpm={exercise.targetRpm} busy={busy} disabled={false} onSave={value => saveSet(set.id, value)} />)}</div></section>)}
     <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Close</button><button className="button-primary" disabled={busy}>Save workout</button></div>
   </form></Modal>
 }

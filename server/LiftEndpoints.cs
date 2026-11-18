@@ -296,7 +296,7 @@ public static class LiftEndpoints
             Guid id, Guid workoutExerciseId, ExerciseChoiceInput input, LiftDbContext db, ClaimsPrincipal user) =>
         {
             var session = await SessionQuery(db)
-                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt == null);
+                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
             if (session is null) return Results.NotFound();
             var exercise = session.Exercises.FirstOrDefault(x => x.Id == workoutExerciseId);
             if (exercise is null) return Results.NotFound();
@@ -318,6 +318,7 @@ public static class LiftEndpoints
                     set.BodyMassKg = null;
                     set.Rpe = null;
                     set.Rir = null;
+                    set.ActualTempo = null;
                     set.DurationSeconds = null;
                     set.HeartRateBpm = null;
                     set.ResistanceLevel = null;
