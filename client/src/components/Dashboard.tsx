@@ -5,7 +5,6 @@ import {
   Icon,
   StatCard,
   TrainingChart,
-  TrainingOrbit,
 } from './Studio'
 
 export function Dashboard({
@@ -54,7 +53,6 @@ export function Dashboard({
   return (
     <div className="dashboard-grid">
       <section className="training-hero">
-        <div className="hero-grid" aria-hidden="true" />
         <div className="hero-copy">
           <span className="hero-label">
             <span /> TRAINING OVERVIEW
@@ -71,26 +69,16 @@ export function Dashboard({
             <button
               className="button-accent"
               disabled={busy}
-              onClick={() => (routines.length ? onStart(routines[0]) : onNew())}
+              onClick={() =>
+                routines.length ? onNavigate('routines') : onNew()
+              }
             >
               <Icon name={routines.length ? 'play' : 'plus'} size={17} />
               {routines.length ? 'Start a workout' : 'Create a routine'}
               <Icon name="arrow" size={18} />
             </button>
-            {routines.length > 0 && (
-              <button
-                className="hero-secondary"
-                onClick={() => onNavigate('routines')}
-              >
-                Explore routines <Icon name="chevron" size={15} />
-              </button>
-            )}
           </div>
         </div>
-        <TrainingOrbit />
-        <span className="hero-index" aria-hidden="true">
-          01 — TRAINING
-        </span>
       </section>
       <div className="stats-row">
         <StatCard
@@ -200,11 +188,8 @@ export function Dashboard({
           </div>
           {routines.length ? (
             <div className="routine-preview-list">
-              {routines.slice(0, 3).map((r, i) => (
+              {routines.slice(0, 3).map((r) => (
                 <div className="routine-preview-row" key={r.id}>
-                  <span className="routine-number">
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
                   <div>
                     <h3>{r.name}</h3>
                     <p>

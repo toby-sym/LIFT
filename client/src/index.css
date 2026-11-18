@@ -316,44 +316,6 @@ html {
   background: #65a51d;
   animation: live-pulse 2s infinite;
 }
-.rail-manifesto {
-  position: relative;
-  overflow: hidden;
-  margin-top: 52px;
-  padding: 22px 17px 18px;
-  border: 1px solid #35412e;
-  border-radius: 12px;
-  background: linear-gradient(130deg, #26311f, #171d17);
-}
-.manifesto-icon {
-  color: #c4f563;
-  margin-bottom: 14px;
-}
-.rail-manifesto p {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.6;
-  letter-spacing: -0.03em;
-}
-.rail-manifesto p span {
-  color: #9caf8b;
-}
-.manifesto-lines {
-  display: flex;
-  justify-content: space-between;
-  height: 28px;
-  margin-top: 18px;
-  transform: skewX(-20deg);
-}
-.manifesto-lines i {
-  width: 2px;
-  height: 100%;
-  background: #7b9c52;
-  opacity: 0.2;
-}
-.manifesto-lines i:nth-child(3n) {
-  opacity: 0.75;
-}
 .rail-resume {
   display: grid;
   gap: 12px;
@@ -546,17 +508,6 @@ html {
     radial-gradient(ellipse at 95% 10%, #4f672e80, transparent 65%),
     linear-gradient(115deg, #273420, #1b2319 70%, #2c3924);
 }
-.hero-grid,
-.auth-grid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(#acc38108 1px, transparent 1px),
-    linear-gradient(90deg, #acc38108 1px, transparent 1px);
-  background-size: 38px 38px;
-  mask-image: linear-gradient(90deg, transparent 15%, #000 90%);
-}
 .hero-copy {
   position: relative;
   z-index: 2;
@@ -621,108 +572,6 @@ html {
 }
 .hero-secondary:hover {
   color: #c4f563;
-}
-.hero-index {
-  position: absolute;
-  right: 25px;
-  bottom: 20px;
-  font-size: 7px;
-  color: #a0b78a;
-  letter-spacing: 0.17em;
-}
-.training-orbit {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  width: 310px;
-  height: 310px;
-  transform: translateY(-50%) rotate(-20deg);
-  color: #c4f563;
-  pointer-events: none;
-}
-.orbit-halo {
-  position: absolute;
-  inset: 20%;
-  background: #b3e45425;
-  border-radius: 50%;
-  filter: blur(45px);
-  animation: halo-breathe 7s ease-in-out infinite;
-}
-.orbit-ring {
-  position: absolute;
-  border-radius: 50%;
-}
-.orbit-ring-outer {
-  inset: 8%;
-  border: 1px solid #b8db8533;
-  outline: 1px dashed #b8db851c;
-  outline-offset: 12px;
-}
-.orbit-ring-middle {
-  inset: 19%;
-  border: 18px solid #7f9d5040;
-  box-shadow:
-    inset 0 0 0 1px #d5f59922,
-    0 0 0 1px #d5f59912;
-  transform: rotateX(15deg);
-}
-.orbit-core {
-  position: absolute;
-  inset: 30%;
-  display: grid;
-  place-items: center;
-  border: 1px solid #c4f56350;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #b2dc6360, #293f1c);
-  box-shadow:
-    0 15px 50px #0c150966,
-    inset 0 1px 2px #e7ffc75a;
-  animation: core-float 7s ease-in-out infinite;
-}
-.orbit-core svg {
-  width: 63%;
-  height: 63%;
-  transform: rotate(20deg);
-  filter: drop-shadow(0 3px 8px #0004);
-}
-.orbit-track {
-  position: absolute;
-  inset: 8%;
-  border-radius: 50%;
-  animation: orbit-turn 28s linear infinite;
-}
-.orbit-track i {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 7px;
-  height: 7px;
-  margin: -3px 0 0 -3px;
-  background: #c4f563;
-  border-radius: 50%;
-  box-shadow: 0 0 15px #c4f56377;
-}
-.orbit-track i + i {
-  top: auto;
-  bottom: -3px;
-  width: 4px;
-  height: 4px;
-  opacity: 0.7;
-}
-.orbit-coordinate {
-  position: absolute;
-  font-size: 6px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  color: #bbd29e;
-}
-.coordinate-a {
-  top: 4%;
-  left: 25%;
-}
-.coordinate-b {
-  bottom: 3%;
-  right: 30%;
 }
 .stats-row {
   display: grid;
@@ -1092,12 +941,6 @@ html {
 .routine-preview-list {
   display: grid;
   gap: 9px;
-}
-.routine-number {
-  font-size: 20px;
-  font-weight: 600;
-  color: #98b17e;
-  font-variant-numeric: tabular-nums;
 }
 .routine-preview-row > div {
   min-width: 0;
@@ -1906,10 +1749,7 @@ html {
   position: relative;
   z-index: 2;
 }
-.auth-grid {
-  mask-image: linear-gradient(130deg, transparent, #000);
-  background-size: 55px 55px;
-}
+
 .auth-statement {
   position: relative;
   z-index: 2;
@@ -1932,14 +1772,7 @@ html {
   font-size: 14px;
   line-height: 1.9;
 }
-.auth-art .training-orbit {
-  width: 420px;
-  height: 420px;
-  right: -145px;
-  top: 63%;
-  opacity: 0.55;
-  z-index: 1;
-}
+
 .auth-art-footer {
   display: flex;
   justify-content: space-between;
@@ -2173,11 +2006,7 @@ html {
     min-height: 320px;
     padding: 42px;
   }
-  .training-orbit {
-    right: 50px;
-    width: 350px;
-    height: 350px;
-  }
+
   .hero-copy p {
     font-size: 13px;
   }
@@ -2203,11 +2032,7 @@ html {
   .training-hero {
     padding: 28px;
   }
-  .training-orbit {
-    right: -40px;
-    width: 270px;
-    height: 270px;
-  }
+
   .hero-copy {
     width: 76%;
   }
@@ -2249,9 +2074,7 @@ html {
   .session-guide p {
     margin-bottom: 22px;
   }
-  .rail-manifesto {
-    margin-top: 35px;
-  }
+
 }
 @media (max-width: 959px) {
   .app-rail {
@@ -2319,9 +2142,7 @@ html {
   .page-title {
     font-size: 35px;
   }
-  .training-orbit {
-    right: 0;
-  }
+
   .hero-copy {
     width: 70%;
   }
@@ -2370,10 +2191,7 @@ html {
   .training-hero {
     min-height: 290px;
   }
-  .training-orbit {
-    right: -55px;
-    opacity: 0.5;
-  }
+
   .hero-copy {
     width: 90%;
   }
@@ -2487,13 +2305,7 @@ html {
   .auth-statement p {
     display: none;
   }
-  .auth-art .training-orbit {
-    width: 300px;
-    height: 300px;
-    right: -55px;
-    top: 56%;
-    opacity: 0.5;
-  }
+
   .auth-art-footer {
     display: none;
   }
@@ -2572,14 +2384,7 @@ html {
     max-width: 240px;
     font-size: 11px;
   }
-  .training-orbit {
-    right: -103px;
-    opacity: 0.25;
-  }
-  .hero-index {
-    font-size: 6px;
-    right: 17px;
-  }
+
   .stats-row {
     gap: 7px;
   }
@@ -2680,11 +2485,6 @@ html {
   .progress-svg .chart-line {
     stroke-dashoffset: 0;
   }
-  .orbit-track,
-  .orbit-core,
-  .orbit-halo {
-    animation: none !important;
-  }
 }
 .brand-period {
   top: 0;
@@ -2733,15 +2533,23 @@ html {
   .rail-section-label {
     margin-top: 28px;
   }
-  .rail-manifesto {
-    margin-top: 24px;
-    padding: 17px;
-  }
-  .manifesto-lines {
-    height: 18px;
-    margin-top: 10px;
-  }
-  .app-rail:has(.rail-resume) .rail-manifesto {
-    display: none;
-  }
+
+}
+
+/* Keep the dashboard focused on the information and actions. */
+.training-hero {
+  min-height: 230px;
+  background: #222e21;
+  border-color: #3d5034;
+}
+.hero-copy { width: 100%; }
+.hero-copy h2 { font-size: clamp(26px, 2.4vw, 36px); }
+.auth-art { background: #202d20; }
+.auth-statement h1 { font-size: clamp(48px, 5vw, 76px); }
+.studio-stat:hover, .routine-card:hover, .exercise-tile:hover { translate: none; }
+@media (max-width: 700px) {
+  .training-hero { min-height: 230px; }
+  .hero-copy { width: 100%; }
+  .hero-copy h2 { font-size: 30px; }
+  .auth-statement h1 { font-size: 48px; }
 }

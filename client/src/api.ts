@@ -79,6 +79,7 @@ export type WorkoutSession = {
   name: string
   startedAt: string
   completedAt: string | null
+  excludedFromStats: boolean
   notes: string
   rating: number | null
   ratingNote: string

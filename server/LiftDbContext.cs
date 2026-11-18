@@ -174,6 +174,7 @@ public sealed class WorkoutSession
     public required string Name { get; set; }
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+    public bool ExcludedFromStats { get; set; }
     public string Notes { get; set; } = "";
     public int? Rating { get; set; }
     public string RatingNote { get; set; } = "";

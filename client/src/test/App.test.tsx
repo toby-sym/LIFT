@@ -67,6 +67,7 @@ const set: WorkoutSet = {
   completed: false,
 }
 const session: WorkoutSession = {
+  excludedFromStats: false,
   id: 'session-1',
   routineId: 'routine-1',
   name: 'Upper body A',
