@@ -127,5 +127,5 @@ Features were developed on focused branches and merged into local `main` with me
 | `feature/animated-training-interface` | Rebuild the frontend as an animated training studio |
 
 ## GitHub Actions
-
+ 
 `.github/workflows/ci.yml` runs on every push and pull request, and can also be started manually from GitHub Actions. GitHub-hosted Ubuntu runners start a temporary PostgreSQL service, apply the EF Core migrations, run the API and frontend tests, lint and build the frontend, then build the combined Docker image. A push to the repository's default branch also uploads the image as a 7-day workflow artifact. This provides CI and a downloadable build without a deployment environment.
