@@ -341,7 +341,7 @@ public static class LiftEndpoints
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
             var session = await SessionQuery(db)
-                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt == null);
+                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && true);
             if (session is null) return Results.NotFound();
             var set = session.Exercises.SelectMany(x => x.Sets).FirstOrDefault(x => x.Id == setId);
             if (set is null) return Results.NotFound();
@@ -366,7 +366,7 @@ public static class LiftEndpoints
             set.ResistanceLevel = input.ResistanceLevel;
             set.Rpm = input.Rpm;
             set.Completed = input.Completed;
-            set.BodyMassKg = input.Completed && exercise.Kind == "bodyweight"
+            set.BodyMassKg = session.CompletedAt != null && exercise.Kind == "bodyweight" ? set.BodyMassKg : input.Completed && exercise.Kind == "bodyweight"
                 ? await db.BodyweightEntries.AsNoTracking()
                     .Where(x => x.OwnerId == Owner(user))
                     .OrderByDescending(x => x.MeasuredOn)
@@ -427,12 +427,33 @@ public static class LiftEndpoints
             return Results.NoContent();
         });
 
+        api.MapPut("/sessions/{id:guid}/history", async (Guid id, HistoryInput input, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 100 || input.Notes is null || input.Notes.Length > 2000 || input.Note is null || input.Note.Length > 500 || input.Rating is < 1 or > 5)
+                return Results.ValidationProblem(new Dictionary<string, string[]> { ["history"] = ["Enter a name of up to 100 characters, valid notes and a rating from 1 to 5."] });
+            var session = await db.WorkoutSessions.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt != null);
+            if (session is null) return Results.NotFound();
+            session.Name = input.Name.Trim(); session.Notes = input.Notes.Trim(); session.Rating = input.Rating;
+            session.RatingNote = input.Note.Trim(); session.ExcludedFromStats = input.ExcludedFromStats;
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
+        api.MapDelete("/sessions/{id:guid}/history", async (Guid id, LiftDbContext db, ClaimsPrincipal user) =>
+        {
+            var session = await db.WorkoutSessions.FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && x.CompletedAt != null);
+            if (session is null) return Results.NotFound();
+            db.WorkoutSessions.Remove(session);
+            await db.SaveChangesAsync();
+            return Results.NoContent();
+        });
+
         api.MapGet("/exercises/{id:guid}/progress", async (Guid id, LiftDbContext db, ClaimsPrincipal user) =>
         {
             var exercise = await db.ExerciseLibrary.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
             if (exercise is null) return Results.NotFound();
             var sessions = await SessionQuery(db)
-                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null)
+                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null && !x.ExcludedFromStats)
                 .OrderByDescending(x => x.CompletedAt)
                 .Take(365)
                 .ToListAsync();
@@ -464,7 +485,7 @@ public static class LiftEndpoints
         api.MapGet("/stats", async (LiftDbContext db, ClaimsPrincipal user) =>
         {
             var sessions = await SessionQuery(db)
-                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null)
+                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null && !x.ExcludedFromStats)
                 .ToListAsync();
             var today = DateTime.UtcNow.Date;
             var monday = today.AddDays(-((int)today.DayOfWeek + 6) % 7);
@@ -856,6 +877,7 @@ public static class LiftEndpoints
         session.Notes,
         session.Rating,
         session.RatingNote,
+        session.ExcludedFromStats,
         durationSeconds = (long)Math.Max(0, ((session.CompletedAt ?? DateTime.UtcNow) - session.StartedAt).TotalSeconds),
         metrics = SessionMetrics(session),
         exercises = session.Exercises.OrderBy(x => x.Order).Select(x => new
@@ -918,3 +940,5 @@ public sealed record ExerciseChoiceInput(Guid ExerciseId, bool ClearLoggedSets =
 public sealed record SetInput(decimal? WeightKg, int? Reps, bool Completed, decimal? Rpe = null, decimal? Rir = null, string? ActualTempo = null, int? DurationSeconds = null, int? HeartRateBpm = null, decimal? ResistanceLevel = null, decimal? Rpm = null);
 public sealed record NotesInput(string Notes);
 public sealed record RatingInput(int? Rating, string Note = "");
+
+public sealed record HistoryInput(string Name, string Notes, int? Rating, string Note, bool ExcludedFromStats);
