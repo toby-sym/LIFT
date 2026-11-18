@@ -341,7 +341,7 @@ public static class LiftEndpoints
             if (errors.Count > 0) return Results.ValidationProblem(errors);
 
             var session = await SessionQuery(db)
-                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user) && true);
+                .FirstOrDefaultAsync(x => x.Id == id && x.OwnerId == Owner(user));
             if (session is null) return Results.NotFound();
             var set = session.Exercises.SelectMany(x => x.Sets).FirstOrDefault(x => x.Id == setId);
             if (set is null) return Results.NotFound();

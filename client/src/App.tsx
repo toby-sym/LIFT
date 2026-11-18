@@ -510,7 +510,7 @@ function App() {
           onDelete={deleteBodyweight}
         />
       )}
-      {page === 'history' && <HistoryPage history={history} />}
+      {page === 'history' && <HistoryPage history={history} onRefresh={loadData} />}
     </AppShell>
   )
 }
@@ -1281,14 +1281,14 @@ function SetRow({
         />
       </label>
       <div className="col-span-3 flex flex-wrap justify-end gap-2 sm:col-span-1">
-        <button
+        <button type="button"
           className="button-quiet !px-3 !py-2"
           disabled={busy || disabled}
           onClick={() => onSave(value(set.completed))}
         >
           Save
         </button>
-        <button
+        <button type="button"
           className={`rounded-xl px-3 py-2 text-sm font-bold ${set.completed ? 'bg-accent/15 text-accent' : 'bg-accent text-deep'}`}
           disabled={busy || disabled}
           onClick={() => onSave(value(!set.completed))}
@@ -2039,7 +2039,7 @@ function ExerciseProgressPanel({
 }
 
 function SessionComparisonPanel({ history }: { history: WorkoutSession[] }) {
-  const comparable = history.filter((session) => session.routineId != null)
+  const comparable = history.filter((session) => session.routineId != null && !session.excludedFromStats)
   let initialLeft = comparable[0]?.id ?? ''
   let initialRight = ''
   for (let i = 0; i < comparable.length && !initialRight; i++) {
@@ -2316,7 +2316,17 @@ function SessionComparisonPanel({ history }: { history: WorkoutSession[] }) {
   )
 }
 
-function HistoryPage({ history }: { history: WorkoutSession[] }) {
+function HistoryPage({ history, onRefresh }: { history: WorkoutSession[]; onRefresh: () => Promise<void> }) {
+  const [editing, setEditing] = useState<WorkoutSession | null>(null)
+  const [historyError, setHistoryError] = useState('')
+  const [historyBusy, setHistoryBusy] = useState(false)
+  async function deleteSession(session: WorkoutSession) {
+    if (!window.confirm(`Permanently delete ?${session.name}? and its logged sets?`)) return
+    setHistoryBusy(true); setHistoryError('')
+    try { await request<null>(`/api/sessions/${session.id}/history`, { method: 'DELETE' }); await onRefresh() }
+    catch (error) { setHistoryError(error instanceof Error ? error.message : 'Could not delete workout.') }
+    finally { setHistoryBusy(false) }
+  }
   function describeSet(
     exercise: WorkoutSession['exercises'][number],
     set: WorkoutSet,
@@ -2347,7 +2357,7 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div>
-        <h2 className="mb-4 text-xl font-black">Recent workouts</h2>
+        <h2 className="mb-4 text-xl font-black">Recent workouts</h2>{historyError && <p role="alert" className="error-banner">{historyError}</p>}
         {history.length ? (
           <div className="space-y-3">
             {history.map((session) => (
@@ -2357,7 +2367,7 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
                     <p className="text-xs font-semibold text-muted">
                       {dateLabel(session.completedAt!)}
                     </p>
-                    <h3 className="mt-1 text-lg font-black">{session.name}</h3>
+                    <h3 className="mt-1 text-lg font-black">{session.name}</h3>{session.excludedFromStats && <p className="text-xs text-muted">Excluded from progress and statistics</p>}
                     <p className="mt-1 text-sm text-muted">
                       {session.exercises.reduce(
                         (sum, x) =>
@@ -2379,6 +2389,7 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
                   </span>
                 </summary>
                 <div className="mt-5 border-t border-line pt-4">
+                  <div className="mb-5 flex flex-wrap gap-2"><button className="button-quiet" onClick={() => setEditing(session)} disabled={historyBusy}>Edit workout</button><button className="button-quiet" onClick={() => deleteSession(session)} disabled={historyBusy}>Delete workout</button></div>
                   {session.exercises.map((exercise) => (
                     <div key={exercise.id} className="mb-4">
                       <h4 className="text-sm font-bold">{exercise.name}</h4>
@@ -2411,9 +2422,44 @@ function HistoryPage({ history }: { history: WorkoutSession[] }) {
           />
         )}
       </div>
-      <ActivityCalendar history={history} />
+      <ActivityCalendar history={history.filter(session => !session.excludedFromStats)} />
+      {editing && <HistoryEditor session={editing} onClose={() => setEditing(null)} onRefresh={onRefresh} />}
     </div>
   )
+}
+
+function HistoryEditor({ session, onClose, onRefresh }: { session: WorkoutSession; onClose: () => void; onRefresh: () => Promise<void> }) {
+  const [current, setCurrent] = useState(session)
+  const [name, setName] = useState(session.name)
+  const [notes, setNotes] = useState(session.notes)
+  const [note, setNote] = useState(session.ratingNote)
+  const [rating, setRating] = useState(session.rating?.toString() ?? '')
+  const [excluded, setExcluded] = useState(session.excludedFromStats)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  async function saveSet(id: string, value: WorkoutSetInput) {
+    setBusy(true); setError('')
+    try { setCurrent(await request<WorkoutSession>(`/api/sessions/${session.id}/sets/${id}`, { method: 'PUT', body: json(value) })); await onRefresh() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save set.') }
+    finally { setBusy(false) }
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError('')
+    try { await request<null>(`/api/sessions/${session.id}/history`, { method: 'PUT', body: json({ name, notes, rating: rating ? Number(rating) : null, note, excludedFromStats: excluded }) }); await onRefresh(); onClose() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save workout.') }
+    finally { setBusy(false) }
+  }
+  return <Modal label="Edit historical workout" onClose={onClose} wide><form className="editor-form" onSubmit={save}>
+    <div className="flex justify-between gap-4"><h2>Edit workout</h2><button type="button" aria-label="Close" onClick={onClose}><Icon name="close" /></button></div>
+    {error && <p role="alert" className="error-banner mt-5">{error}</p>}
+    <label className="mt-5 block">Workout name<input className="field mt-2" value={name} onChange={e => setName(e.target.value)} required maxLength={100} /></label>
+    <label className="mt-4 block">Notes<textarea className="field mt-2" value={notes} maxLength={2000} onChange={e => setNotes(e.target.value)} /></label>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2"><label>Rating<select className="field mt-2" value={rating} onChange={e => setRating(e.target.value)}><option value="">No rating</option>{[1,2,3,4,5].map(n => <option key={n} value={n}>{n} / 5</option>)}</select></label><label>Reflection<input className="field mt-2" maxLength={500} value={note} onChange={e => setNote(e.target.value)} /></label></div>
+    <label className="mt-5 flex items-center gap-3"><input type="checkbox" checked={!excluded} onChange={e => setExcluded(!e.target.checked)} /> Include this workout in progress and statistics</label>
+    <p className="mt-5 text-sm text-muted">Save each set individually. Changes to sets take effect immediately.</p>
+    {current.exercises.map(exercise => <section key={exercise.id} className="mt-5"><h3 className="mb-3 font-bold">{exercise.name}</h3><div className="workout-exercise space-y-2">{exercise.sets.map(set => <SetRow key={`${set.id}:${set.weightKg}:${set.reps}:${set.completed}:${set.durationSeconds}`} set={set} kind={exercise.kind} oneRepMaxKg={exercise.oneRepMaxKg} targetHeartRateMin={exercise.targetHeartRateMin} targetHeartRateMax={exercise.targetHeartRateMax} targetResistanceLevel={exercise.targetResistanceLevel} targetRpm={exercise.targetRpm} busy={busy} disabled={!exercise.exerciseId} onSave={value => saveSet(set.id, value)} />)}</div></section>)}
+    <div className="mt-8 flex justify-end gap-3 border-t border-line pt-5"><button type="button" className="button-quiet" onClick={onClose}>Close</button><button className="button-primary" disabled={busy}>Save workout</button></div>
+  </form></Modal>
 }
 
 function ExercisesPage({
