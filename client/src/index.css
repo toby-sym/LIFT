@@ -508,17 +508,6 @@ html {
     radial-gradient(ellipse at 95% 10%, #4f672e80, transparent 65%),
     linear-gradient(115deg, #273420, #1b2319 70%, #2c3924);
 }
-.hero-grid,
-.auth-grid {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(#acc38108 1px, transparent 1px),
-    linear-gradient(90deg, #acc38108 1px, transparent 1px);
-  background-size: 38px 38px;
-  mask-image: linear-gradient(90deg, transparent 15%, #000 90%);
-}
 .hero-copy {
   position: relative;
   z-index: 2;
@@ -1760,10 +1749,7 @@ html {
   position: relative;
   z-index: 2;
 }
-.auth-grid {
-  mask-image: linear-gradient(130deg, transparent, #000);
-  background-size: 55px 55px;
-}
+
 .auth-statement {
   position: relative;
   z-index: 2;
@@ -1786,14 +1772,7 @@ html {
   font-size: 14px;
   line-height: 1.9;
 }
-.auth-art .training-orbit {
-  width: 420px;
-  height: 420px;
-  right: -145px;
-  top: 63%;
-  opacity: 0.55;
-  z-index: 1;
-}
+
 .auth-art-footer {
   display: flex;
   justify-content: space-between;
@@ -2027,11 +2006,7 @@ html {
     min-height: 320px;
     padding: 42px;
   }
-  .training-orbit {
-    right: 50px;
-    width: 350px;
-    height: 350px;
-  }
+
   .hero-copy p {
     font-size: 13px;
   }
@@ -2057,11 +2032,7 @@ html {
   .training-hero {
     padding: 28px;
   }
-  .training-orbit {
-    right: -40px;
-    width: 270px;
-    height: 270px;
-  }
+
   .hero-copy {
     width: 76%;
   }
@@ -2103,9 +2074,7 @@ html {
   .session-guide p {
     margin-bottom: 22px;
   }
-  .rail-manifesto {
-    margin-top: 35px;
-  }
+
 }
 @media (max-width: 959px) {
   .app-rail {
@@ -2173,9 +2142,7 @@ html {
   .page-title {
     font-size: 35px;
   }
-  .training-orbit {
-    right: 0;
-  }
+
   .hero-copy {
     width: 70%;
   }
@@ -2224,10 +2191,7 @@ html {
   .training-hero {
     min-height: 290px;
   }
-  .training-orbit {
-    right: -55px;
-    opacity: 0.5;
-  }
+
   .hero-copy {
     width: 90%;
   }
@@ -2341,13 +2305,7 @@ html {
   .auth-statement p {
     display: none;
   }
-  .auth-art .training-orbit {
-    width: 300px;
-    height: 300px;
-    right: -55px;
-    top: 56%;
-    opacity: 0.5;
-  }
+
   .auth-art-footer {
     display: none;
   }
@@ -2426,14 +2384,7 @@ html {
     max-width: 240px;
     font-size: 11px;
   }
-  .training-orbit {
-    right: -103px;
-    opacity: 0.25;
-  }
-  .hero-index {
-    font-size: 6px;
-    right: 17px;
-  }
+
   .stats-row {
     gap: 7px;
   }
@@ -2534,11 +2485,6 @@ html {
   .progress-svg .chart-line {
     stroke-dashoffset: 0;
   }
-  .orbit-track,
-  .orbit-core,
-  .orbit-halo {
-    animation: none !important;
-  }
 }
 .brand-period {
   top: 0;
@@ -2587,17 +2533,7 @@ html {
   .rail-section-label {
     margin-top: 28px;
   }
-  .rail-manifesto {
-    margin-top: 24px;
-    padding: 17px;
-  }
-  .manifesto-lines {
-    height: 18px;
-    margin-top: 10px;
-  }
-  .app-rail:has(.rail-resume) .rail-manifesto {
-    display: none;
-  }
+
 }
 
 /* Keep the dashboard focused on the information and actions. */
