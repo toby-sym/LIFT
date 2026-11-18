@@ -78,6 +78,14 @@ dotnet tool run dotnet-ef database update --project server --startup-project ser
 
 `Dockerfile` builds the React app and hosts it from the ASP.NET Core app on port 8080. Put that container behind HTTPS and provide the PostgreSQL connection string through your deployment platform. The repository does not include a hosted environment or database credentials.
 
+### Release version shown in the app
+
+Run the **Release Creator** GitHub Actions workflow from `main` and enter the release number as `MAJOR.MINOR.PATCH`, for example `1.0.2`. The workflow merges `main` into `release`, writes that number to `client/release-version.txt` on `release`, and tags the resulting commit `v1.0.2`. It then creates a GitHub Release. A Coolify Docker build from that release commit reads the file and embeds the number in the frontend. No version needs to be entered in Coolify for each release.
+
+The file is maintained on `release`; it is deliberately absent from `main`, where local development continues to display `Development`. A manually configured `APP_VERSION` Docker build argument takes precedence over the file, so remove any old override in Coolify to use the automatic value. A manual merge to `release` alone does not update the version: use Release Creator to record and tag the release. These changes take effect on the next release created with the updated workflow.
+
+Release Creator pushes directly to `release` and does not create a release pull request. The workflow requires permission to push to that branch; branch protection and Coolify's deployment configuration are managed separately.
+
 ## Checks
 
 ```powershell
@@ -85,11 +93,17 @@ dotnet test tests/Lift.Api.Tests.csproj --configuration Release
 npm run build --prefix client
 npm run lint --prefix client
 npm test --prefix client
+bash tests/verify-release-version.sh
+bash tests/verify-release-workflow.sh
 ```
 
 The API tests use an in-memory SQLite database for account ownership, routine alternatives, workout logging and feature calculations. Production migrations target PostgreSQL.
 
 The frontend tests use Vitest, React Testing Library and jsdom with mocked API responses. They cover starting a workout, searching and filtering movements, saving routine alternatives, dialog errors and cancellation, selecting an exercise, activity periods, and preserving a rest timer across set saves. These interaction tests do not replace visual checks in a browser.
+
+The release version check requires Docker and builds from a temporary archive of the current commit. It verifies the development default, release file and explicit build argument against the generated frontend bundles.
+
+The release workflow check runs the workflow's merge and tag commands against a temporary local Git repository, including consecutive releases and release-only changes.
 
 Manrope is bundled under the SIL Open Font License in `client/public/fonts/OFL.txt`. The interface uses CSS and SVG animation without an additional runtime animation library.
 
