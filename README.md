@@ -94,6 +94,7 @@ npm run build --prefix client
 npm run lint --prefix client
 npm test --prefix client
 bash tests/verify-release-version.sh
+bash tests/verify-release-workflow.sh
 ```
 
 The API tests use an in-memory SQLite database for account ownership, routine alternatives, workout logging and feature calculations. Production migrations target PostgreSQL.
@@ -101,6 +102,8 @@ The API tests use an in-memory SQLite database for account ownership, routine al
 The frontend tests use Vitest, React Testing Library and jsdom with mocked API responses. They cover starting a workout, searching and filtering movements, saving routine alternatives, dialog errors and cancellation, selecting an exercise, activity periods, and preserving a rest timer across set saves. These interaction tests do not replace visual checks in a browser.
 
 The release version check requires Docker and builds from a temporary archive of the current commit. It verifies the development default, release file and explicit build argument against the generated frontend bundles.
+
+The release workflow check runs the workflow's merge and tag commands against a temporary local Git repository, including consecutive releases and release-only changes.
 
 Manrope is bundled under the SIL Open Font License in `client/public/fonts/OFL.txt`. The interface uses CSS and SVG animation without an additional runtime animation library.
 

@@ -123,6 +123,9 @@ jobs:
       - name: Check release version builds
         run: bash tests/verify-release-version.sh
 
+      - name: Check release workflow
+        run: bash tests/verify-release-workflow.sh
+
       - name: Save image artifact
         if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
         run: docker save lift:${GITHUB_SHA} | gzip > lift-image.tar.gz
