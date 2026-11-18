@@ -71,20 +71,14 @@ export function Dashboard({
             <button
               className="button-accent"
               disabled={busy}
-              onClick={() => (routines.length ? onStart(routines[0]) : onNew())}
+              onClick={() =>
+                routines.length ? onNavigate('routines') : onNew()
+              }
             >
               <Icon name={routines.length ? 'play' : 'plus'} size={17} />
               {routines.length ? 'Start a workout' : 'Create a routine'}
               <Icon name="arrow" size={18} />
             </button>
-            {routines.length > 0 && (
-              <button
-                className="hero-secondary"
-                onClick={() => onNavigate('routines')}
-              >
-                Explore routines <Icon name="chevron" size={15} />
-              </button>
-            )}
           </div>
         </div>
         <TrainingOrbit />
