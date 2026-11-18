@@ -128,6 +128,23 @@ public sealed class WorkoutFlowTests
             weightKg = 100, reps = 10, completed = true
         })).StatusCode);
 
+        var historyEdit = new { name = "Revised session", notes = "Edited", rating = (int?)4, note = "Better", excludedFromStats = true };
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/sessions/{sessionId}/history", historyEdit)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await bob.DeleteAsync($"/api/sessions/{sessionId}/history")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/history", historyEdit)).StatusCode);
+        history = await alice.GetFromJsonAsync<JsonElement>("/api/sessions/history");
+        Assert.True(history[0].GetProperty("excludedFromStats").GetBoolean());
+        Assert.Equal("Revised session", history[0].GetProperty("name").GetString());
+        Assert.Equal(0, (await alice.GetFromJsonAsync<JsonElement>("/api/stats")).GetProperty("workouts").GetInt32());
+        Assert.Empty((await alice.GetFromJsonAsync<JsonElement>($"/api/exercises/{linkedExerciseId}/progress")).GetProperty("points").EnumerateArray());
+        Assert.Equal(HttpStatusCode.OK, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new { weightKg = 70, reps = 9, completed = true })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/history", new { name = "Revised session", notes = "Edited", rating = (int?)4, note = "Better", excludedFromStats = false })).StatusCode);
+        stats = await alice.GetFromJsonAsync<JsonElement>("/api/stats");
+        Assert.Equal(1, stats.GetProperty("workouts").GetInt32());
+        Assert.Equal(70m, stats.GetProperty("bests")[0].GetProperty("weightKg").GetDecimal());
+        Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/sessions/{sessionId}/history")).StatusCode);
+        Assert.Empty((await alice.GetFromJsonAsync<JsonElement>("/api/sessions/history")).EnumerateArray());
+
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/bodyweight/{bodyweightEntryId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await alice.GetAsync("/api/routines")).StatusCode);
