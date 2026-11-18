@@ -346,7 +346,7 @@ public static class LiftEndpoints
             var set = session.Exercises.SelectMany(x => x.Sets).FirstOrDefault(x => x.Id == setId);
             if (set is null) return Results.NotFound();
             var exercise = session.Exercises.First(x => x.Sets.Any(s => s.Id == setId));
-            if (exercise.ExerciseDefinitionId is null)
+            if (exercise.ExerciseDefinitionId is null && session.CompletedAt is null)
                 return Results.Conflict(new { message = "Choose an exercise option before logging sets." });
 
             if (input.Completed && exercise.Kind == "strength" && input.WeightKg is null)
