@@ -23,7 +23,6 @@ import {
   CountUp,
   Icon,
   Modal,
-  TrainingOrbit,
 } from './components/Studio'
 type Account = { email: string }
 
@@ -547,7 +546,6 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
   return (
     <div className="auth-layout">
       <section className="auth-art">
-        <div className="auth-grid" />
         <div className="brand-lockup">
           <Brand />
         </div>
@@ -564,7 +562,6 @@ function AuthScreen({ onSignedIn }: { onSignedIn: () => Promise<void> }) {
             Keep routines, workouts, and progress in one place.
           </p>
         </div>
-        <TrainingOrbit />
         <div className="auth-art-footer">
           <span>TRAINING, TRACKED.</span>
           <span>EST. 2026 ↗</span>
@@ -796,7 +793,7 @@ function WorkoutPanel({
     >
       <div className="mb-5 flex items-center gap-3">
         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-paper text-xs font-black">
-          {String(index + 1).padStart(2, '0')}
+          {index + 1}
         </span>
         <div>
           <h3 className="text-lg font-black">{exercise.slotName}</h3>
@@ -962,7 +959,7 @@ function WorkoutPanel({
                     href={`#workout-exercise-${exercise.id}`}
                     key={exercise.id}
                   >
-                    {String(group.indexes[index] + 1).padStart(2, '0')} ·{' '}
+                    {group.indexes[index] + 1} ·{' '}
                     {exercise.slotName}
                   </a>
                 ))}
@@ -2244,7 +2241,7 @@ function SessionComparisonPanel({ history }: { history: WorkoutSession[] }) {
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <h3 className="font-black">
-                          {String(row.index + 1).padStart(2, '0')} ·{' '}
+                          {row.index + 1} ·{' '}
                           {row.left.slotName}
                         </h3>
                         {row.right && (

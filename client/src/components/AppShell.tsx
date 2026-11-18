@@ -86,7 +86,6 @@ export function AppShell({
         </button>
         <div className="rail-section-label">
           <span>WORKSPACE</span>
-          <span>01</span>
         </div>
         <nav className="rail-nav" aria-label="Main navigation">
           {navigation.map((item) => (
@@ -105,21 +104,6 @@ export function AppShell({
             </button>
           ))}
         </nav>
-        <div className="rail-manifesto">
-          <div className="manifesto-icon">
-            <Icon name="bolt" size={23} />
-          </div>
-          <p>
-            Training log.
-            <br />
-            <span>Made for you.</span>
-          </p>
-          <div className="manifesto-lines" aria-hidden="true">
-            {Array.from({ length: 18 }, (_, i) => (
-              <i key={i} />
-            ))}
-          </div>
-        </div>
         {hasActive && (
           <button className="rail-resume" onClick={() => navigate('today')}>
             <span className="live-badge">

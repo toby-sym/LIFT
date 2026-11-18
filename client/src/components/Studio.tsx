@@ -177,31 +177,6 @@ export function CountUp({
   )
 }
 
-export function TrainingOrbit({ compact = false }: { compact?: boolean }) {
-  return (
-    <div
-      className={`training-orbit ${compact ? 'is-compact' : ''}`}
-      aria-hidden="true"
-    >
-      <div className="orbit-halo" />
-      <div className="orbit-ring orbit-ring-outer" />
-      <div className="orbit-ring orbit-ring-middle" />
-      <div className="orbit-core">
-        <svg viewBox="0 0 100 100">
-          <path d="M34 22v56h45V61H52V22H34Z" fill="currentColor" />
-          <path d="M63 22h16v25H63z" fill="currentColor" />
-        </svg>
-      </div>
-      <div className="orbit-track">
-        <i />
-        <i />
-      </div>
-      <span className="orbit-coordinate coordinate-a">TRAIN / TRACK</span>
-      <span className="orbit-coordinate coordinate-b">LIFT</span>
-    </div>
-  )
-}
-
 export function StatCard({
   label,
   value,

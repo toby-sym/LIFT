@@ -33,7 +33,7 @@ Open <http://localhost:5173>. Vite forwards account and API requests to the C# s
 ### Training studio interface
 
 - A responsive dark interface with lime accents, locally hosted Manrope typography, custom icons and a redesigned sign-in screen.
-- Animated page entrances, statistic counters, chart lines and bars, an orbital hero illustration, hover feedback, workout progress rings and completion notifications. Motion respects the device's reduced-motion preference.
+- Animated page entrances, statistic counters, chart lines and bars, hover feedback, workout progress rings and completion notifications. Motion respects the device's reduced-motion preference.
 - An interactive activity chart with 7-day and 28-day views, recent sessions and a 12-week training calendar. Activity views use the latest 30 completed workouts returned by the history API; their captions state this limit.
 - Search and type filters for the exercise library, desktop navigation and a fixed mobile navigation bar.
 - Native dialogs with keyboard focus containment, Escape dismissal and validation messages inside the form.
