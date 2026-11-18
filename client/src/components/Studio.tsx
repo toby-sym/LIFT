@@ -247,7 +247,7 @@ export function TrainingChart({ history }: { history: WorkoutSession[] }) {
     )
     const key = dayKey(date)
     const sessions = history.filter(
-      (s) => s.completedAt && dayKey(new Date(s.completedAt)) === key,
+      (s) => !s.excludedFromStats && s.completedAt && dayKey(new Date(s.completedAt)) === key,
     )
     return {
       date,
@@ -377,7 +377,7 @@ export function ActivityCalendar({ history }: { history: WorkoutSession[] }) {
       date,
       count: history.filter(
         (s) =>
-          s.completedAt && dayKey(new Date(s.completedAt)) === dayKey(date),
+          !s.excludedFromStats && s.completedAt && dayKey(new Date(s.completedAt)) === dayKey(date),
       ).length,
     }
   })
