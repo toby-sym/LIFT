@@ -528,6 +528,38 @@ public static class LiftEndpoints
             var sessionTonnageRecordKg = tonnageRecords.Count > 0 ? tonnageRecords.Max() : (decimal?)null;
             return Results.Ok(new { workouts = sessions.Count, weeklySets, bests, personalRecords, sessionTonnageRecordKg });
         });
+
+        api.MapGet("/training-review", async (LiftDbContext db, ClaimsPrincipal user, IConfiguration configuration) =>
+        {
+            var today = DateTime.UtcNow.Date;
+            var sessions = await SessionQuery(db)
+                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null && !x.ExcludedFromStats &&
+                    x.CompletedAt >= TrainingReviewAnalysis.EarliestDate(today))
+                .ToListAsync();
+            return Results.Ok(TrainingReviewAnalysis.Create(sessions, today, CloudflareTrainingReview.IsConfigured(configuration)));
+        });
+
+        api.MapPost("/training-review/summary", async (
+            LiftDbContext db,
+            ClaimsPrincipal user,
+            IConfiguration configuration,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken) =>
+        {
+            if (!CloudflareTrainingReview.IsConfigured(configuration))
+                return Results.Json(new { message = "The optional AI summary is not configured." }, statusCode: StatusCodes.Status503ServiceUnavailable);
+
+            var today = DateTime.UtcNow.Date;
+            var sessions = await SessionQuery(db)
+                .Where(x => x.OwnerId == Owner(user) && x.CompletedAt != null && !x.ExcludedFromStats &&
+                    x.CompletedAt >= TrainingReviewAnalysis.EarliestDate(today))
+                .ToListAsync(cancellationToken);
+            var review = TrainingReviewAnalysis.Create(sessions, today, aiSummaryAvailable: true);
+            var summary = await CloudflareTrainingReview.SummarizeAsync(review, configuration, httpClientFactory, cancellationToken);
+            return summary is null
+                ? Results.Json(new { message = "The AI service is temporarily unavailable. Your computed review is still available." }, statusCode: StatusCodes.Status503ServiceUnavailable)
+                : Results.Ok(summary);
+        });
     }
 
     private static string Owner(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier)!;

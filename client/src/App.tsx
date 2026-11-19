@@ -10,6 +10,8 @@ import {
   type Routine,
   type RoutineInput,
   type Stats,
+  type TrainingReview,
+  type TrainingReviewSummary,
   type WorkoutSession,
   type WorkoutSet,
   type WorkoutSetInput,
@@ -68,6 +70,7 @@ function App() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [active, setActive] = useState<WorkoutSession | null>(null)
   const [history, setHistory] = useState<WorkoutSession[]>([])
+  const [trainingReview, setTrainingReview] = useState<TrainingReview | null>(null)
   const [stats, setStats] = useState<Stats>({
     workouts: 0,
     weeklySets: 0,
@@ -102,6 +105,7 @@ function App() {
       nextStats,
       nextExercises,
       nextBodyweight,
+      nextTrainingReview,
     ] = await Promise.all([
       request<Routine[]>('/api/routines'),
       request<WorkoutSession | null>('/api/sessions/active'),
@@ -109,6 +113,7 @@ function App() {
       request<Stats>('/api/stats'),
       request<ExerciseDefinition[]>('/api/exercises'),
       request<BodyweightEntry[]>('/api/bodyweight'),
+      request<TrainingReview>('/api/training-review'),
     ])
     setRoutines(nextRoutines)
     setActive(nextActive)
@@ -116,6 +121,7 @@ function App() {
     setStats(nextStats)
     setExerciseLibrary(nextExercises)
     setBodyweightEntries(nextBodyweight)
+    setTrainingReview(nextTrainingReview)
   }
 
   useEffect(() => {
@@ -157,6 +163,7 @@ function App() {
       setActive(null)
       setRoutines([])
       setHistory([])
+      setTrainingReview(null)
       setExerciseLibrary([])
       setBodyweightEntries([])
     })
@@ -498,6 +505,9 @@ function App() {
           onEdit={setEditingExercise}
           onDelete={deleteExercise}
         />
+      )}
+      {page === 'review' && trainingReview && (
+        <TrainingReviewPage review={trainingReview} />
       )}
       {page === 'progress' && (
         <ProgressPage
@@ -1478,6 +1488,319 @@ function RoutinesPage({
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function trainingDateLabel(value: string) {
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`)
+  return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' }).format(date)
+}
+
+function decimalLabel(value: number | null, digits = 1) {
+  return value == null
+    ? '—'
+    : value.toLocaleString(undefined, { maximumFractionDigits: digits })
+}
+
+function TrainingReviewPage({ review }: { review: TrainingReview }) {
+  const [summary, setSummary] = useState('')
+  const [summaryBusy, setSummaryBusy] = useState(false)
+  const [summaryError, setSummaryError] = useState('')
+  const maxWeeklySets = Math.max(1, ...review.weeks.map((week) => week.sets))
+  const compared = [
+    {
+      label: 'Completed sessions',
+      current: review.current.workouts,
+      previous: review.previous.workouts,
+      suffix: '',
+    },
+    {
+      label: 'Completed sets',
+      current: review.current.sets,
+      previous: review.previous.sets,
+      suffix: '',
+    },
+    {
+      label: 'Training time',
+      current: Math.round(review.current.durationSeconds / 60),
+      previous: Math.round(review.previous.durationSeconds / 60),
+      suffix: ' min',
+    },
+    {
+      label: 'Average session rating',
+      current: review.current.averageRating,
+      previous: review.previous.averageRating,
+      suffix: ' / 5',
+    },
+    {
+      label: 'Average set RPE',
+      current: review.current.averageRpe,
+      previous: review.previous.averageRpe,
+      suffix: '',
+    },
+  ]
+  const tonnageDifference = review.current.tonnageKg == null || review.previous.tonnageKg == null
+    ? null
+    : review.current.tonnageKg - review.previous.tonnageKg
+
+  async function writeSummary() {
+    setSummaryBusy(true)
+    setSummaryError('')
+    try {
+      const result = await request<TrainingReviewSummary>(
+        '/api/training-review/summary',
+        { method: 'POST' },
+      )
+      setSummary(result.summary)
+    } catch {
+      setSummaryError(
+        'The AI service is unavailable right now. Your computed review is still here.',
+      )
+    } finally {
+      setSummaryBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <section className="card p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Four-week comparison</p>
+            <h2 className="mt-2 text-2xl font-black">Your training, in context</h2>
+            <p className="mt-2 text-sm text-muted">
+              {trainingDateLabel(review.current.from)}–{trainingDateLabel(review.current.to)}
+              {' '}compared with the previous 28 days. Excluded sessions are left out.
+            </p>
+          </div>
+          <div className="rounded-xl bg-paper px-4 py-3 text-right">
+            <p className="text-xs font-semibold text-muted">Current period</p>
+            <p className="mt-1 text-sm font-bold">
+              {review.current.workouts} {review.current.workouts === 1 ? 'session' : 'sessions'}
+            </p>
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {compared.map((metric) => {
+            const difference = metric.current == null || metric.previous == null
+              ? null
+              : metric.current - metric.previous
+            return (
+              <div key={metric.label} className="rounded-xl bg-paper p-4">
+                <p className="text-xs font-semibold text-muted">{metric.label}</p>
+                <p className="mt-2 text-2xl font-black">
+                  {decimalLabel(metric.current)}{metric.current == null ? '' : metric.suffix}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  {difference == null
+                    ? 'No earlier readings to compare'
+                    : `${difference > 0 ? '+' : ''}${decimalLabel(difference)}${metric.suffix} vs previous 28 days`}
+                </p>
+              </div>
+            )
+          })}
+          <div className="rounded-xl bg-paper p-4">
+            <p className="text-xs font-semibold text-muted">Completed training volume</p>
+            <p className="mt-2 text-2xl font-black">
+              {review.current.tonnageKg == null
+                ? '—'
+                : `${decimalLabel(review.current.tonnageKg)} kg`}
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {review.current.tonnageKg == null
+                ? review.current.tonnageComplete
+                  ? 'No strength or bodyweight sets recorded in this period'
+                  : 'Some completed sets are missing load or rep data'
+                : tonnageDifference == null
+                  ? 'Completed strength and bodyweight sets; earlier volume is incomplete'
+                  : `${tonnageDifference > 0 ? '+' : ''}${decimalLabel(tonnageDifference)} kg vs previous 28 days`}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+        <section className="card p-5 md:p-6">
+          <p className="eyebrow">Eight-week history</p>
+          <h2 className="mt-2 text-xl font-black">Completed sets</h2>
+          <div className="mt-5 grid h-48 grid-cols-8 items-end gap-2" role="img" aria-label="Completed sets across the last eight weeks">
+            {review.weeks.map((week) => (
+              <div key={week.from} className="flex h-full min-w-0 flex-col items-center justify-end gap-2">
+                <span className="text-[10px] font-semibold text-muted">{week.sets || ''}</span>
+                <div className="flex h-36 w-full items-end rounded-t-md bg-paper">
+                  <div
+                    className="w-full rounded-t-md bg-lime"
+                    style={{ height: `${week.sets ? Math.max(5, week.sets / maxWeeklySets * 100) : 0}%` }}
+                    title={`${week.sets} work sets, ${week.workouts} sessions`}
+                  />
+                </div>
+                <span className="text-[10px] text-muted">{trainingDateLabel(week.from)}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted">Each bar covers seven days; labels mark the start date.</p>
+        </section>
+
+        <section className="card p-5 md:p-6">
+          <p className="eyebrow">Recorded exercise types</p>
+          <h2 className="mt-2 text-xl font-black">Set mix</h2>
+          <p className="mt-2 text-sm text-muted">
+            Based on LIFT’s strength, bodyweight, and cardio classifications. It does not represent muscle-group balance.
+          </p>
+          {review.movementMix.length ? (
+            <div className="mt-5 space-y-4">
+              {review.movementMix.map((item) => (
+                <div key={item.kind}>
+                  <div className="mb-1 flex justify-between text-sm">
+                    <span className="font-semibold capitalize">{item.kind}</span>
+                    <span className="text-muted">{item.sets} sets · {decimalLabel(item.sharePercent)}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-paper">
+                    <div className="h-full rounded-full bg-lime" style={{ width: `${item.sharePercent}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-6 rounded-xl bg-paper p-4 text-sm text-muted">Completed sets will appear here.</p>
+          )}
+        </section>
+      </div>
+
+      <section className="card p-5 md:p-6">
+        <p className="eyebrow">Evidence from your sessions</p>
+        <h2 className="mt-2 text-xl font-black">Changes worth a closer look</h2>
+        <p className="mt-2 text-sm text-muted">
+          These are signals in the logged data, not a judgement about whether a session was good or bad.
+        </p>
+        {review.signals.length ? (
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {review.signals.map((signal) => (
+              <article key={signal.id} className="rounded-xl bg-paper p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-lime">{signal.exerciseName}</p>
+                <h3 className="mt-2 font-bold">{signal.title}</h3>
+                <p className="mt-1 text-sm text-muted">{signal.detail}</p>
+                <ul className="mt-3 space-y-1 text-xs text-muted">
+                  {signal.evidence.map((item) => <li key={item}>• {item}</li>)}
+                </ul>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">
+            No repeated-performance or matched-effort signals were found in the last eight weeks.
+          </p>
+        )}
+      </section>
+
+      <section className="card p-5 md:p-6">
+        <p className="eyebrow">Exact exercise variations</p>
+        <h2 className="mt-2 text-xl font-black">Recent performance</h2>
+        <p className="mt-2 text-sm text-muted">
+          Variations are kept separate, so a machine press and a cable press have independent histories.
+        </p>
+        {review.exerciseTrends.length ? (
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            {review.exerciseTrends.map((trend) => {
+              const points = trend.observations
+              const hasEstimate = points.some((point) => point.estimatedOneRmKg != null)
+              const hasLoad = points.some((point) => point.bestLoadKg != null)
+              const valueFor = (point: (typeof points)[number]) => hasEstimate
+                ? point.estimatedOneRmKg
+                : hasLoad ? point.bestLoadKg : point.totalDurationSeconds
+              const values = points.map(valueFor).filter((value): value is number => value != null)
+              const low = Math.min(...values)
+              const high = Math.max(...values)
+              const chartPoints = points.flatMap((point, index) => {
+                const value = valueFor(point)
+                if (value == null) return []
+                return [{
+                  point,
+                  x: points.length === 1 ? 160 : 12 + index / (points.length - 1) * 296,
+                  y: high === low ? 45 : 78 - ((value - low) / (high - low)) * 62,
+                }]
+              })
+              const path = chartPoints.map((point, index) => `${index ? 'L' : 'M'} ${point.x} ${point.y}`).join(' ')
+              return (
+                <article key={trend.variationKey} className="rounded-xl bg-paper p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-lime">{trend.kind} · exact variation</p>
+                      <h3 className="mt-1 font-bold">{trend.name}</h3>
+                    </div>
+                    <span className="text-xs text-muted">{points.length} sessions</span>
+                  </div>
+                  {chartPoints.length > 0 && (
+                    <div className="mt-3 rounded-lg bg-[#191d1f] px-2 py-1">
+                      <p className="px-2 pt-2 text-[10px] text-muted">
+                        {hasEstimate ? 'Estimated 1RM (kg)' : hasLoad ? 'Best load (kg)' : 'Duration (seconds)'}
+                      </p>
+                      <svg viewBox="0 0 320 90" className="h-20 w-full" role="img" aria-label={`${trend.name} recent trend`}>
+                        <path d={path} fill="none" stroke="#c4f563" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                        {chartPoints.map(({ point, x, y }, index) => (
+                          <circle key={`${point.date}-${index}`} cx={x} cy={y} r="4" fill="#c4f563">
+                            <title>{`${trainingDateLabel(point.date)}: ${decimalLabel(valueFor(point))}`}</title>
+                          </circle>
+                        ))}
+                      </svg>
+                    </div>
+                  )}
+                  <ol className="mt-3 space-y-2">
+                    {[...points].reverse().map((point, index) => (
+                      <li key={`${point.date}-${index}`} className="flex flex-wrap justify-between gap-x-3 text-xs">
+                        <span className="font-semibold">{trainingDateLabel(point.date)}</span>
+                        <span className="text-right text-muted">
+                          {point.bestLoadKg == null ? '' : `${decimalLabel(point.bestLoadKg)} kg`}
+                          {point.bestSetReps == null ? '' : ` × ${point.bestSetReps} reps`}
+                          {point.estimatedOneRmKg == null ? '' : ` · est. 1RM ${decimalLabel(point.estimatedOneRmKg)} kg`}
+                          {point.averageRpe == null ? '' : ` · RPE ${decimalLabel(point.averageRpe)}`}
+                          {trend.kind === 'cardio' && point.totalDurationSeconds ? ` · ${point.totalDurationSeconds}s` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </article>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">
+            Log completed sessions to build exercise trends. The review covers the last eight weeks.
+          </p>
+        )}
+      </section>
+
+      <section className="card p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="eyebrow">Optional AI summary</p>
+            <h2 className="mt-2 text-xl font-black">Write my training review</h2>
+            <p className="mt-2 max-w-2xl text-sm text-muted">
+              On request, Cloudflare AI summarizes the computed metrics and signals above. LIFT sends no workout notes, account details, or set-by-set logs. Cloudflare says standard inference requests are not retained after processing or used to train models.
+            </p>
+          </div>
+          <button
+            className="button-primary"
+            onClick={writeSummary}
+            disabled={!review.aiSummaryAvailable || summaryBusy}
+          >
+            {summaryBusy ? 'Writing review…' : 'Write my training review'}
+          </button>
+        </div>
+        {!review.aiSummaryAvailable && (
+          <p className="mt-4 rounded-xl bg-paper p-4 text-sm text-muted">
+            The computed review works now. The optional summary becomes available when Cloudflare Workers AI is configured for this environment.
+          </p>
+        )}
+        {summaryError && <p role="alert" className="mt-4 text-sm text-red-300">{summaryError}</p>}
+        {summary && (
+          <div className="mt-5 rounded-xl bg-paper p-4" aria-live="polite">
+            <p className="text-xs font-semibold uppercase tracking-wide text-lime">Based on the review data above</p>
+            <p className="mt-2 whitespace-pre-line text-sm leading-6">{summary}</p>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
