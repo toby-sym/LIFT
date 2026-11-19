@@ -8,6 +8,6 @@ Start from the latest `main`. Create a focused branch with a `feature/`, `story/
 
 ## Production
 
-`release` is production. Do not deploy feature branches or `main`. Promote `main` to `release` only when it is production-ready, by merging `main` directly into `release` after its required checks pass.
+`release` is production. Do not deploy feature branches or `main`. Promote `main` to `release` only when it is production-ready and its required checks pass. On every promotion from `main` to `release`, increment the patch component of the latest release version by one unless the user specifies another version. Use the latest release tag/version as the baseline and run the Release Creator workflow from `main` with the resulting version; it merges `main` into `release` and records the version and tag. Do not bump the version for feature branches or ordinary merges into `main`.
 
 The branches intentionally differ. Before changing `Dockerfile`, `compose.yaml`, `.dockerignore`, `server/Program.cs`, or release-version files and documentation, compare the current contents and preserve production-specific behavior.
