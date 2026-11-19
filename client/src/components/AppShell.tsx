@@ -3,11 +3,12 @@ import { Brand, Icon, type IconName } from './Studio'
 import { useLocalDay } from './dates'
 import { appVersion } from '../version'
 
-export type Page = 'today' | 'routines' | 'exercises' | 'progress' | 'history'
+export type Page = 'today' | 'routines' | 'exercises' | 'review' | 'progress' | 'history'
 const navigation: { id: Page; label: string; icon: IconName }[] = [
   { id: 'today', label: 'Overview', icon: 'overview' },
   { id: 'routines', label: 'Routines', icon: 'routine' },
   { id: 'exercises', label: 'Exercise library', icon: 'exercise' },
+  { id: 'review', label: 'Training review', icon: 'progress' },
   { id: 'progress', label: 'Progress', icon: 'progress' },
   { id: 'history', label: 'History', icon: 'history' },
 ]
@@ -29,6 +30,11 @@ const titles: Record<
     label: 'TRAINING',
     title: 'Exercise library',
     description: 'Browse and manage exercises.',
+  },
+  review: {
+    label: 'TRAINING DATA',
+    title: 'Training review',
+    description: 'See what changed in your training and the sessions behind it.',
   },
   progress: {
     label: 'TRAINING DATA',
@@ -192,7 +198,13 @@ export function AppShell({
             aria-current={page === item.id ? 'page' : undefined}
           >
             <Icon name={item.icon} size={20} />
-            <span>{item.id === 'exercises' ? 'Exercises' : item.label}</span>
+            <span>
+              {item.id === 'exercises'
+                ? 'Exercises'
+                : item.id === 'review'
+                  ? 'Review'
+                  : item.label}
+            </span>
           </button>
         ))}
       </nav>

@@ -135,6 +135,72 @@ export type ExerciseProgress = {
   }[]
 }
 
+export type TrainingReview = {
+  generatedAt: string
+  current: TrainingPeriod
+  previous: TrainingPeriod
+  weeks: TrainingWeek[]
+  exerciseTrends: ExerciseTrend[]
+  signals: TrainingSignal[]
+  movementMix: { kind: ExerciseKind | string; sets: number; sharePercent: number }[]
+  aiSummaryAvailable: boolean
+}
+
+export type TrainingPeriod = {
+  from: string
+  to: string
+  workouts: number
+  sets: number
+  tonnageKg: number | null
+  tonnageComplete: boolean
+  durationSeconds: number
+  averageRating: number | null
+  averageRpe: number | null
+}
+
+export type TrainingWeek = {
+  from: string
+  to: string
+  workouts: number
+  sets: number
+  tonnageKg: number | null
+  tonnageComplete: boolean
+  durationSeconds: number
+}
+
+export type ExerciseTrend = {
+  variationKey: string
+  exerciseId: string | null
+  name: string
+  kind: ExerciseKind | string
+  observations: ExerciseObservation[]
+}
+
+export type ExerciseObservation = {
+  date: string
+  bestLoadKg: number | null
+  bestSetReps: number | null
+  totalReps: number
+  totalDurationSeconds: number
+  estimatedOneRmKg: number | null
+  averageRpe: number | null
+  volumeKg: number | null
+  volumeComplete: boolean
+  sets: number
+}
+
+export type TrainingSignal = {
+  id: string
+  type: string
+  exerciseId: string | null
+  exerciseName: string
+  title: string
+  detail: string
+  evidence: string[]
+}
+
+export type TrainingReviewSummary = { summary: string }
+
 export type RoutineInput = {
   name: string
   exercises: {

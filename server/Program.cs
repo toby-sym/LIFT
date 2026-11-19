@@ -8,6 +8,7 @@ var connectionString = builder.Configuration.GetConnectionString("Lift")
     ?? throw new InvalidOperationException("Set ConnectionStrings:Lift before starting the API.");
 
 builder.Services.AddDbContext<LiftDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddHttpClient("cloudflare-ai", client => client.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddAuthorization();
 builder.Services.AddIdentityApiEndpoints<IdentityUser>(options =>
     {
