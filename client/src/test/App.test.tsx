@@ -13,6 +13,7 @@ import {
   type ExerciseDefinition,
   type Routine,
   type Stats,
+  type TrainingReview,
   type WorkoutSession,
   type WorkoutSet,
 } from '../api'
@@ -142,6 +143,75 @@ const stats: Stats = {
   personalRecords: [],
   sessionTonnageRecordKg: null,
 }
+const trainingReview: TrainingReview = {
+  generatedAt: date,
+  current: {
+    from: date,
+    to: date,
+    workouts: 4,
+    sets: 28,
+    tonnageKg: 4200,
+    tonnageComplete: true,
+    durationSeconds: 5400,
+    averageRating: 4,
+    averageRpe: 7.5,
+  },
+  previous: {
+    from: date,
+    to: date,
+    workouts: 3,
+    sets: 22,
+    tonnageKg: 3600,
+    tonnageComplete: true,
+    durationSeconds: 4500,
+    averageRating: 3.5,
+    averageRpe: 7,
+  },
+  weeks: Array.from({ length: 8 }, (_, index) => ({
+    from: new Date(Date.now() - (8 - index) * 7 * 86400000).toISOString(),
+    to: date,
+    workouts: index % 2,
+    sets: index === 7 ? 8 : index,
+    tonnageKg: null,
+    tonnageComplete: true,
+    durationSeconds: 1800,
+  })),
+  exerciseTrends: [
+    {
+      variationKey: 'id:cable',
+      exerciseId: 'cable',
+      name: 'Cable incline press',
+      kind: 'strength',
+      observations: [
+        {
+          date,
+          bestLoadKg: 60,
+          bestSetReps: 8,
+          totalReps: 24,
+          totalDurationSeconds: 0,
+          estimatedOneRmKg: 76,
+          averageRpe: 8,
+          volumeKg: 1440,
+          volumeComplete: true,
+          sets: 3,
+        },
+      ],
+    },
+  ],
+  signals: [
+    {
+      id: 'repeat-cable',
+      type: 'repeated_performance',
+      exerciseId: 'cable',
+      exerciseName: 'Cable incline press',
+      title: 'Possible plateau: performance has repeated',
+      detail: 'The same marker appeared in three sessions.',
+      evidence: ['10 Oct: 76 kg', '17 Oct: 76 kg', '24 Oct: 76 kg'],
+    },
+  ],
+  movementMix: [{ kind: 'strength', sets: 28, sharePercent: 100 }],
+  aiSummaryAvailable: false,
+}
 let active: WorkoutSession | null
 let savedRoutine: Routine | null
 let failExerciseSave: boolean
@@ -162,6 +232,8 @@ beforeEach(() => {
     if (path === '/api/sessions/active') return active
     if (path === '/api/sessions/history') return []
     if (path === '/api/stats') return stats
+    if (path === '/api/training-review') return trainingReview
+    if (path === '/api/training-review/summary') return { summary: 'You completed four sessions and added six work sets.' }
     if (path === '/api/exercises' && options?.method === 'POST') {
       if (failExerciseSave)
         throw new Error('That exercise name is already in your library.')
@@ -227,6 +299,31 @@ describe('Training studio', () => {
       body: JSON.stringify({ routineId: 'routine-1' }),
     })
     expect(screen.getByLabelText('Weight (kg)')).toBeTruthy()
+  })
+
+  it('shows computed training review evidence while keeping the optional AI action off when unconfigured', async () => {
+    await openApp()
+    navigate('Training review')
+    await screen.findByRole('heading', { name: 'Your training, in context' })
+    expect(screen.getByText('Completed sessions')).toBeTruthy()
+    expect(screen.getByText('Possible plateau: performance has repeated')).toBeTruthy()
+    expect(screen.getAllByText('Cable incline press')).toHaveLength(2)
+    expect(screen.getByText(/does not represent muscle-group balance/i)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Write my training review' }).hasAttribute('disabled')).toBe(true)
+  })
+
+  it('requests the optional summary only after the user chooses it', async () => {
+    trainingReview.aiSummaryAvailable = true
+    try {
+      await openApp()
+      navigate('Training review')
+      const button = await screen.findByRole('button', { name: 'Write my training review' })
+      fireEvent.click(button)
+      await screen.findByText('You completed four sessions and added six work sets.')
+      expect(api).toHaveBeenCalledWith('/api/training-review/summary', { method: 'POST' })
+    } finally {
+      trainingReview.aiSummaryAvailable = false
+    }
   })
 
   it('combines exercise search and type filters and can clear an empty result', async () => {

@@ -2114,7 +2114,7 @@ html {
     z-index: 40;
     inset: auto 0 0;
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     padding: 9px 14px calc(9px + env(safe-area-inset-bottom));
     border-top: 1px solid #4c5d3540;
     background: #172017f0;

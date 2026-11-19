@@ -9,6 +9,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
@@ -111,6 +112,22 @@ public sealed class WorkoutFlowTests
         Assert.Equal(1, stats.GetProperty("workouts").GetInt32());
         Assert.Equal(60m, stats.GetProperty("bests")[0].GetProperty("weightKg").GetDecimal());
 
+        var reviewResponse = await alice.GetAsync("/api/training-review");
+        Assert.True(reviewResponse.IsSuccessStatusCode, await reviewResponse.Content.ReadAsStringAsync());
+        var reviewText = await reviewResponse.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("Good session", reviewText);
+        using var reviewDocument = JsonDocument.Parse(reviewText);
+        var review = reviewDocument.RootElement;
+        Assert.Equal(1, review.GetProperty("current").GetProperty("workouts").GetInt32());
+        Assert.Equal(1, review.GetProperty("current").GetProperty("sets").GetInt32());
+        Assert.Equal(480m, review.GetProperty("current").GetProperty("tonnageKg").GetDecimal());
+        Assert.Single(review.GetProperty("exerciseTrends").EnumerateArray());
+        Assert.Equal("Bench press", review.GetProperty("exerciseTrends")[0].GetProperty("name").GetString());
+        Assert.False(review.GetProperty("exerciseTrends")[0].GetProperty("observations")[0].TryGetProperty("effortPoints", out _));
+        Assert.False(review.GetProperty("aiSummaryAvailable").GetBoolean());
+        Assert.Equal(HttpStatusCode.ServiceUnavailable,
+            (await alice.PostAsync("/api/training-review/summary", null)).StatusCode);
+
         using var bob = factory.CreateClient();
         await RegisterAndSignIn(bob, "bob@example.com");
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/routines")).EnumerateArray());
@@ -118,6 +135,9 @@ public sealed class WorkoutFlowTests
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/bodyweight")).EnumerateArray());
         Assert.Equal(HttpStatusCode.NotFound, (await bob.DeleteAsync($"/api/bodyweight/{bodyweightEntryId}")).StatusCode);
         Assert.Empty((await bob.GetFromJsonAsync<JsonElement>("/api/sessions/history")).EnumerateArray());
+        var bobReview = await bob.GetFromJsonAsync<JsonElement>("/api/training-review");
+        Assert.Equal(0, bobReview.GetProperty("current").GetProperty("workouts").GetInt32());
+        Assert.Empty(bobReview.GetProperty("exerciseTrends").EnumerateArray());
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PostAsJsonAsync("/api/sessions", new { routineId })).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await bob.PutAsJsonAsync($"/api/routines/{routineId}", new
         {
@@ -136,9 +156,14 @@ public sealed class WorkoutFlowTests
         Assert.True(history[0].GetProperty("excludedFromStats").GetBoolean());
         Assert.Equal("Revised session", history[0].GetProperty("name").GetString());
         Assert.Equal(0, (await alice.GetFromJsonAsync<JsonElement>("/api/stats")).GetProperty("workouts").GetInt32());
+        var excludedReview = await alice.GetFromJsonAsync<JsonElement>("/api/training-review");
+        Assert.Equal(0, excludedReview.GetProperty("current").GetProperty("workouts").GetInt32());
+        Assert.Empty(excludedReview.GetProperty("exerciseTrends").EnumerateArray());
         Assert.Empty((await alice.GetFromJsonAsync<JsonElement>($"/api/exercises/{linkedExerciseId}/progress")).GetProperty("points").EnumerateArray());
         Assert.Equal(HttpStatusCode.OK, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new { weightKg = 70, reps = 9, completed = true })).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.PutAsJsonAsync($"/api/sessions/{sessionId}/history", new { name = "Revised session", notes = "Edited", rating = (int?)4, note = "Better", excludedFromStats = false })).StatusCode);
+        var restoredReview = await alice.GetFromJsonAsync<JsonElement>("/api/training-review");
+        Assert.Equal(630m, restoredReview.GetProperty("current").GetProperty("tonnageKg").GetDecimal());
         stats = await alice.GetFromJsonAsync<JsonElement>("/api/stats");
         Assert.Equal(1, stats.GetProperty("workouts").GetInt32());
         Assert.Equal(70m, stats.GetProperty("bests")[0].GetProperty("weightKg").GetDecimal());
@@ -148,6 +173,116 @@ public sealed class WorkoutFlowTests
         Assert.Equal(HttpStatusCode.NoContent, (await alice.DeleteAsync($"/api/bodyweight/{bodyweightEntryId}")).StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, (await alice.PostAsync("/api/auth/logout", null)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await alice.GetAsync("/api/routines")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Training_review_flags_repeated_performance_and_harder_effort_with_session_evidence()
+    {
+        using var factory = new LiftFactory();
+        factory.Initialize();
+        using var client = factory.CreateClient();
+        await RegisterAndSignIn(client, "review@example.com");
+
+        var routineResponse = await client.PostAsJsonAsync("/api/routines", new
+        {
+            name = "Review test",
+            exercises = new[]
+            {
+                new { name = "Bench press", sets = 1, targetReps = 8 },
+                new { name = "Overhead press", sets = 1, targetReps = 8 }
+            }
+        });
+        Assert.Equal(HttpStatusCode.Created, routineResponse.StatusCode);
+        var routine = await routineResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var routineId = routine.GetProperty("id").GetString();
+
+        for (var index = 0; index < 3; index++)
+        {
+            var startResponse = await client.PostAsJsonAsync("/api/sessions", new { routineId });
+            Assert.Equal(HttpStatusCode.Created, startResponse.StatusCode);
+            var session = await startResponse.Content.ReadFromJsonAsync<JsonElement>();
+            var sessionId = session.GetProperty("id").GetString();
+            var exercises = session.GetProperty("exercises").EnumerateArray().ToList();
+
+            for (var exerciseIndex = 0; exerciseIndex < exercises.Count; exerciseIndex++)
+            {
+                var exercise = exercises[exerciseIndex];
+                var setId = exercise.GetProperty("sets")[0].GetProperty("id").GetString();
+                var effort = exerciseIndex == 0 ? 8m : index == 0 ? 7m : 8m;
+                var load = exerciseIndex == 0 ? 60m : 40m;
+                var update = await client.PutAsJsonAsync($"/api/sessions/{sessionId}/sets/{setId}", new
+                {
+                    weightKg = load,
+                    reps = 8,
+                    completed = true,
+                    rpe = effort
+                });
+                Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+            }
+
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsync($"/api/sessions/{sessionId}/finish", null)).StatusCode);
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<LiftDbContext>();
+            var savedSession = await db.WorkoutSessions.FirstAsync(x => x.Id == Guid.Parse(sessionId!));
+            savedSession.StartedAt = DateTime.UtcNow.Date.AddDays(-21 + index * 7).AddHours(9);
+            savedSession.CompletedAt = savedSession.StartedAt.AddMinutes(45);
+            await db.SaveChangesAsync();
+        }
+
+        var review = await client.GetFromJsonAsync<JsonElement>("/api/training-review");
+        var signals = review.GetProperty("signals").EnumerateArray().ToList();
+        Assert.Contains(signals, signal => signal.GetProperty("type").GetString() == "repeated_performance" &&
+            signal.GetProperty("exerciseName").GetString() == "Bench press");
+        var effortSignal = Assert.Single(signals, signal => signal.GetProperty("type").GetString() == "effort_increase");
+        Assert.Equal("Overhead press", effortSignal.GetProperty("exerciseName").GetString());
+        Assert.Contains("40 kg for 8 reps", effortSignal.GetProperty("detail").GetString());
+        Assert.Equal(2, effortSignal.GetProperty("evidence").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Cloudflare_summary_receives_derived_metrics_without_notes_or_owner_details()
+    {
+        const string privateNote = "Private workout note that must not leave LIFT.";
+        var session = new WorkoutSession
+        {
+            OwnerId = "private-owner-id",
+            Name = "Upper body",
+            Notes = privateNote,
+            RatingNote = "Private rating note",
+            StartedAt = DateTime.UtcNow.AddMinutes(-45),
+            CompletedAt = DateTime.UtcNow,
+            Exercises =
+            [
+                new WorkoutExercise
+                {
+                    ExerciseDefinitionId = Guid.NewGuid(),
+                    Name = "Bench press",
+                    Kind = "strength",
+                    Sets = [new WorkoutSet { Completed = true, WeightKg = 60m, Reps = 8, Rpe = 8m }]
+                }
+            ]
+        };
+        var review = TrainingReviewAnalysis.Create([session], DateTime.UtcNow, aiSummaryAvailable: true);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["CLOUDFLARE_ACCOUNT_ID"] = "test-account",
+            ["CLOUDFLARE_API_TOKEN"] = "test-token"
+        }).Build();
+        var handler = new CapturingHttpMessageHandler();
+        using var httpClient = new HttpClient(handler);
+        var result = await CloudflareTrainingReview.SummarizeAsync(
+            review,
+            configuration,
+            new StubHttpClientFactory(httpClient),
+            CancellationToken.None);
+
+        Assert.Equal("Review ready.", result?.Summary);
+        Assert.Equal("api.cloudflare.com", handler.RequestUri?.Host);
+        Assert.Contains("Bench press", handler.Body);
+        Assert.DoesNotContain(privateNote, handler.Body);
+        Assert.DoesNotContain("Private rating note", handler.Body);
+        Assert.DoesNotContain("private-owner-id", handler.Body);
+        Assert.DoesNotContain(session.Id.ToString(), handler.Body);
     }
 
     [Fact]
@@ -622,6 +757,12 @@ public sealed class WorkoutFlowTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+            builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["CLOUDFLARE_ACCOUNT_ID"] = "",
+                    ["CLOUDFLARE_API_TOKEN"] = ""
+                }));
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<DbContextOptions<LiftDbContext>>();
@@ -643,5 +784,26 @@ public sealed class WorkoutFlowTests
             using var scope = Services.CreateScope();
             scope.ServiceProvider.GetRequiredService<LiftDbContext>().Database.EnsureCreated();
         }
+    }
+
+    private sealed class CapturingHttpMessageHandler : HttpMessageHandler
+    {
+        public Uri? RequestUri { get; private set; }
+        public string Body { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestUri = request.RequestUri;
+            Body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"success\":true,\"result\":{\"response\":\"Review ready.\"}}")
+            };
+        }
+    }
+
+    private sealed class StubHttpClientFactory(HttpClient client) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => client;
     }
 }

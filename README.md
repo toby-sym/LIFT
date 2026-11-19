@@ -58,10 +58,15 @@ Open <http://localhost:5173>. Vite forwards account and API requests to the C# s
 ### History and progress
 
 - Browse completed workouts and weekly completed-set totals.
+- Compare the most recent 28 days with the previous 28 days for completed sessions, sets, tonnage, training time, ratings and recorded RPE. An eight-week chart shows weekly set totals.
 - View personal records for heaviest effective load, most reps at a load, estimated 1RM and complete session tonnage.
 - View per-exercise history charts for load, reps, estimated 1RM and volume.
+- Review exact exercise variations separately, with recent load, reps, estimated 1RM and effort trends. LIFT flags repeated performance and rising RPE for the same load and reps, and shows the sessions behind each signal.
+- See set mix by LIFT's strength, bodyweight and cardio classifications. The exercise library does not currently classify muscle groups.
 - Record body mass over time and see its trend.
 - Compare two sessions of the same routine by overall totals and aligned routine slots. Different choices within a slot remain distinct in the comparison.
+
+The on-demand **Write my training review** summary uses Cloudflare Workers AI. LIFT calculates the metrics first and sends only review aggregates, exercise labels, dates and evidence signals; workout notes, account details and set-by-set logs stay in LIFT. Configure `CLOUDFLARE_ACCOUNT_ID` and the server-side secret `CLOUDFLARE_API_TOKEN` to enable it. `CLOUDFLARE_AI_MODEL` is optional and defaults to `@cf/meta/llama-3.1-8b-instruct`. The numerical review works when AI is unconfigured or unavailable.
 
 ### Accounts and data
 
@@ -77,6 +82,8 @@ dotnet tool run dotnet-ef database update --project server --startup-project ser
 ```
 
 `Dockerfile` builds the React app and hosts it from the ASP.NET Core app on port 8080. Put that container behind HTTPS and provide the PostgreSQL connection string through your deployment platform. The repository does not include a hosted environment or database credentials.
+
+For the optional AI summary, set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` and, if needed, `CLOUDFLARE_AI_MODEL` in the server's deployment environment. Keep the token on the server; it is never sent to the browser. The summary button is unavailable until the account ID and token are configured.
 
 ### Release version shown in the app
 
